@@ -93,7 +93,7 @@ def load_and_concat_flights(
         concatenated.columns = new_columns
 
         # Add sequential block index
-        concatenated["block_index"] = block_idx
+        concatenated["trajectory_index"] = block_idx
         concatenated_blocks.append(concatenated)
 
     # Combine all blocks into a single DataFrame with sequential index
