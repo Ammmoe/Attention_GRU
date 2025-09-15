@@ -43,7 +43,7 @@ for traj_idx in df["trajectory_index"].unique():
 
     seq_count = n_rows - LOOK_BACK - FORWARD_LEN + 1
     for i in range(seq_count):
-        seq_X = traj_data[i : i + LOOK_BACK]              # shape (LOOK_BACK, features)
+        seq_X = traj_data[i : i + LOOK_BACK]  # shape (LOOK_BACK, features)
         seq_y = traj_data[i + LOOK_BACK + FORWARD_LEN - 1]  # shape (features,)
 
         X.append(seq_X)
@@ -67,8 +67,12 @@ scaler_X = MinMaxScaler()
 scaler_y = MinMaxScaler()
 
 scaler_X.fit(X_train.reshape(-1, num_features_X))
-X_train_scaled = scaler_X.transform(X_train.reshape(-1, num_features_X)).reshape(X_train.shape)
-X_test_scaled = scaler_X.transform(X_test.reshape(-1, num_features_X)).reshape(X_test.shape)
+X_train_scaled = scaler_X.transform(X_train.reshape(-1, num_features_X)).reshape(
+    X_train.shape
+)
+X_test_scaled = scaler_X.transform(X_test.reshape(-1, num_features_X)).reshape(
+    X_test.shape
+)
 
 scaler_y.fit(y_train)
 y_train_scaled = scaler_y.transform(y_train)
@@ -81,10 +85,12 @@ y_train_tensor = torch.tensor(y_train_scaled, dtype=torch.float32)
 y_test_tensor = torch.tensor(y_test_scaled, dtype=torch.float32)
 
 # --- Create DataLoaders ---
-train_loader = DataLoader(TensorDataset(X_train_tensor, y_train_tensor),
-                        batch_size=BATCH_SIZE, shuffle=True)
-test_loader = DataLoader(TensorDataset(X_test_tensor, y_test_tensor),
-                        batch_size=BATCH_SIZE, shuffle=False)
+train_loader = DataLoader(
+    TensorDataset(X_train_tensor, y_train_tensor), batch_size=BATCH_SIZE, shuffle=True
+)
+test_loader = DataLoader(
+    TensorDataset(X_test_tensor, y_test_tensor), batch_size=BATCH_SIZE, shuffle=False
+)
 
 # --- Log dataset sizes ---
 total_sequences = X_train_tensor.shape[0] + X_test_tensor.shape[0]
@@ -98,7 +104,7 @@ logger.info("Using device: %s", device)
 
 # --- Model, criterion, optimizer ---
 model_params = {
-    "input_size": X_train_tensor.shape[-1],   # features (e.g., 3 for x,y,z)
+    "input_size": X_train_tensor.shape[-1],  # features (e.g., 3 for x,y,z)
     "enc_hidden_size": 64,
     "dec_hidden_size": 64,
     "output_size": y_train_tensor.shape[-1],  # same as features
@@ -175,8 +181,12 @@ y_true = torch.cat(all_trues, dim=0)
 
 # Inference time
 total_inf_time = sum(inference_times)
-logger.info("Average inference time per sequence: %.6f s", total_inf_time / total_sequences)
-logger.info("Average inference time per batch: %.6f s", total_inf_time / len(test_loader))
+logger.info(
+    "Average inference time per sequence: %.6f s", total_inf_time / total_sequences
+)
+logger.info(
+    "Average inference time per batch: %.6f s", total_inf_time / len(test_loader)
+)
 
 # Save config / hyperparameters
 config = {
@@ -196,40 +206,58 @@ with open(config_path, "w", encoding="utf-8") as f:
 logger.info("Config saved to %s", config_path)
 
 # --- Group results back by trajectory_index ---
-traj_test = traj_test[:len(y_true)]  # align just in case
+traj_test = traj_test[: len(y_true)]  # align just in case
 
 NUM_PLOTS = 3  # number of trajectories to plot
 unique_trajs = np.unique(traj_test)
 
+# Each trajectory has 3 agents (x, y, z for each)
+AGENTS = 3
+COLORS = ["blue", "green", "orange"]  # one color per agent
+
 for traj_idx in unique_trajs[:NUM_PLOTS]:
     mask = traj_test == traj_idx
+    true_traj = scaler_y.inverse_transform(y_true[mask].numpy())
+    pred_traj = scaler_y.inverse_transform(y_pred[mask].numpy())
 
-    true_traj = y_true[mask].numpy()
-    pred_traj = y_pred[mask].numpy()
-
-    # --- 3D Plot (x, y, z path) ---
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection="3d")
 
-    ax.plot(
-        true_traj[:, 0], true_traj[:, 1], true_traj[:, 2],
-        label="True Path", color="blue"
-    )
-    ax.plot(
-        pred_traj[:, 0], pred_traj[:, 1], pred_traj[:, 2],
-        label="Predicted Path", color="red", linestyle="--"
-    )
+    for agent in range(AGENTS):
+        start = agent * 3
+        end = start + 3
+
+        # True trajectory for this agent
+        ax.plot(
+            true_traj[:, start],
+            true_traj[:, start + 1],
+            true_traj[:, start + 2],
+            label=f"Agent {agent + 1} True",
+            color=COLORS[agent],
+        )
+
+        # Predicted trajectory for this agent
+        ax.plot(
+            pred_traj[:, start],
+            pred_traj[:, start + 1],
+            pred_traj[:, start + 2],
+            label=f"Agent {agent + 1} Pred",
+            color=COLORS[agent],
+            linestyle="--",
+        )
 
     ax.set_title(f"Trajectory {traj_idx} (True vs Predicted)")
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
-    # For 3D axes, set_label is used for Z axis if set_zlabel is unavailable
     ax.set_label("Z")
     ax.legend()
-    plt.tight_layout()
 
+    # --- If you want interactive viewing ---
+    plt.show()
+
+    # --- If you also want to save PNGs ---
     plot_path = os.path.join(exp_dir, f"trajectory_{traj_idx}.png")
     plt.savefig(plot_path, dpi=150)
-    plt.close()
+    # plt.close()
 
-    logger.info("Saved trajectory plot for %s to %s", traj_idx, plot_path)
+    logger.info("Plotted trajectory %s", traj_idx)
