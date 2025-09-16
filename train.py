@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 from data.trajectory_loader import load_and_concat_flights
 from models.attention_bi_gru_predictor import TrajPredictor
@@ -213,9 +214,16 @@ unique_trajs = np.unique(traj_test)
 
 # Each trajectory has 3 agents (x, y, z for each)
 AGENTS = 3
-COLORS = ["blue", "green", "orange"]  # one color per agent
 
-for traj_idx in unique_trajs[:NUM_PLOTS]:
+# Dynamically generate N colors from a colormap
+COLORS = [plt.get_cmap("tab10")(i % 10) for i in range(AGENTS)]
+
+# Randomly select trajectories to plot
+plot_trajs = np.random.choice(
+    unique_trajs, size=min(NUM_PLOTS, len(unique_trajs)), replace=False
+)
+
+for traj_idx in plot_trajs:
     mask = traj_test == traj_idx
     true_traj = scaler_y.inverse_transform(y_true[mask].numpy())
     pred_traj = scaler_y.inverse_transform(y_pred[mask].numpy())
@@ -224,7 +232,7 @@ for traj_idx in unique_trajs[:NUM_PLOTS]:
     ax = fig.add_subplot(111, projection="3d")
 
     for agent in range(AGENTS):
-        start = agent * 3
+        start = agent * AGENTS
         end = start + 3
 
         # True trajectory for this agent
@@ -252,12 +260,12 @@ for traj_idx in unique_trajs[:NUM_PLOTS]:
     ax.set_label("Z")
     ax.legend()
 
-    # --- If you want interactive viewing ---
-    plt.show()
-
-    # --- If you also want to save PNGs ---
+    # --- Save PNGs ---
     plot_path = os.path.join(exp_dir, f"trajectory_{traj_idx}.png")
     plt.savefig(plot_path, dpi=150)
-    # plt.close()
+
+    # --- For interactive viewing ---
+    plt.show()
+    plt.close()
 
     logger.info("Plotted trajectory %s", traj_idx)
