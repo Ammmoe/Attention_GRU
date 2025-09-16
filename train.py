@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
 from data.trajectory_loader import load_and_concat_flights
 from models.attention_bi_gru_predictor import TrajPredictor
@@ -124,39 +123,44 @@ best_loss = float("inf")
 epochs_no_improve = 0
 training_start = time.time()
 
-for epoch in range(EPOCHS):
-    model.train()
-    total_loss = 0.0
+try:
+    for epoch in range(EPOCHS):
+        model.train()
+        total_loss = 0.0
 
-    for batch_x, batch_y in train_loader:
-        batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+        for batch_x, batch_y in train_loader:
+            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
 
-        optimizer.zero_grad()
-        pred = model(batch_x)
-        loss = criterion(pred, batch_y)
-        loss.backward()
-        optimizer.step()
+            optimizer.zero_grad()
+            pred = model(batch_x)
+            loss = criterion(pred, batch_y)
+            loss.backward()
+            optimizer.step()
 
-        total_loss += loss.item()
+            total_loss += loss.item()
 
-    avg_loss = total_loss / len(train_loader)
-    logger.info("Epoch %d/%d - Train Loss: %.7f", epoch + 1, EPOCHS, avg_loss)
+        avg_loss = total_loss / len(train_loader)
+        logger.info("Epoch %d/%d - Train Loss: %.7f", epoch + 1, EPOCHS, avg_loss)
 
-    # Early stopping
-    if avg_loss < best_loss:
-        best_loss = avg_loss
-        epochs_no_improve = 0
-        torch.save(model.state_dict(), os.path.join(exp_dir, "best_model.pt"))
-    else:
-        epochs_no_improve += 1
+        # Early stopping
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            epochs_no_improve = 0
+            torch.save(model.state_dict(), os.path.join(exp_dir, "best_model.pt"))
+        else:
+            epochs_no_improve += 1
 
-    if epochs_no_improve >= patience:
-        logger.info("Early stopping triggered after %d epochs", epoch + 1)
-        break
+        if epochs_no_improve >= patience:
+            logger.info("Early stopping triggered after %d epochs", epoch + 1)
+            break
+
+except KeyboardInterrupt:
+    logger.warning("Training interrupted by user! Running evaluation...")
 
 # --- Save last-epoch model ---
-torch.save(model.state_dict(), os.path.join(exp_dir, "last_model.pt"))
-logger.info("Training completed in %.2f seconds", time.time() - training_start)
+finally:
+    torch.save(model.state_dict(), os.path.join(exp_dir, "last_model.pt"))
+    logger.info("Training completed in %.2f seconds", time.time() - training_start)
 
 # --- Evaluation ---
 model.eval()
