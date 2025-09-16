@@ -20,6 +20,7 @@ CSV_PATH = "data/flights.csv"
 BATCH_SIZE = 32
 EPOCHS = 500
 LEARNING_RATE = 1e-3
+AGENTS = 3  # Number of agents in the trajectory data
 
 # --- Setup logger and experiment folder ---
 logger, exp_dir = get_logger()
@@ -29,7 +30,7 @@ logger.info("Experiment started")
 logger.info("Experiment folder: %s", exp_dir)
 
 # --- Load DataFrame ---
-df = load_and_concat_flights(CSV_PATH, min_rows=1000, num_flights=3)
+df = load_and_concat_flights(CSV_PATH, min_rows=800, num_flights=AGENTS)
 
 # --- Prepare sequences ---
 X, y, trajectory_ids = [], [], []
@@ -202,6 +203,7 @@ config = {
     "EPOCHS": EPOCHS,
     "BATCH_SIZE": BATCH_SIZE,
     "LEARNING_RATE": LEARNING_RATE,
+    "AGENTS": AGENTS,
 }
 
 config_path = os.path.join(exp_dir, "config.json")
@@ -215,9 +217,6 @@ traj_test = traj_test[: len(y_true)]  # align just in case
 
 NUM_PLOTS = 3  # number of trajectories to plot
 unique_trajs = np.unique(traj_test)
-
-# Each trajectory has 3 agents (x, y, z for each)
-AGENTS = 3
 
 # Dynamically generate N colors from a colormap
 COLORS = [plt.get_cmap("tab10")(i % 10) for i in range(AGENTS)]
@@ -235,9 +234,10 @@ for traj_idx in plot_trajs:
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection="3d")
 
+    DIM = 3  # 3D plot
     for agent in range(AGENTS):
-        start = agent * AGENTS
-        end = start + 3
+        start = agent * DIM
+        end = start + DIM
 
         # True trajectory for this agent
         ax.plot(
