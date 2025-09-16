@@ -32,7 +32,7 @@ class Attention(nn.Module):
         return torch.softmax(attention, dim=1)
 
 
-class LSTMTrajPredictor(nn.Module):
+class TrajPredictor(nn.Module):
     """
     Seq2Seq LSTM with attention for trajectory prediction.
     """
@@ -79,7 +79,9 @@ class LSTMTrajPredictor(nn.Module):
             outputs: [batch, pred_len, output_size]
         """
         # ---- Encoder ----
-        enc_outputs, (h, c) = self.encoder(src)  # h,c shape: (num_layers*2, batch, enc_hidden)
+        enc_outputs, (h, c) = self.encoder(
+            src
+        )  # h,c shape: (num_layers*2, batch, enc_hidden)
         # concat last forward and backward hidden states
         h = torch.cat([h[-2], h[-1]], dim=1)
         c = torch.cat([c[-2], c[-1]], dim=1)
