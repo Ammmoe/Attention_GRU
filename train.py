@@ -30,7 +30,13 @@ logger.info("Experiment started")
 logger.info("Experiment folder: %s", exp_dir)
 
 # --- Load DataFrame ---
-df = load_and_concat_flights(CSV_PATH, min_rows=800, num_flights=AGENTS)
+df = load_and_concat_flights(
+    CSV_PATH,
+    min_rows=800,
+    num_flights=AGENTS,
+    add_zurich_csv=True,
+    zurich_csv_path="data/zurich_flights_downsampled_2.csv",
+)
 
 # --- Prepare sequences ---
 X, y, trajectory_ids = [], [], []
