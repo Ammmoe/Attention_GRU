@@ -70,11 +70,13 @@ class TrajPredictor(nn.Module):
             bidirectional=True,
         )
         self.attention = Attention(enc_hidden_size * 2, dec_hidden_size)
+        self.enc_to_dec = nn.Linear(enc_hidden_size * 2, dec_hidden_size)
         self.decoder = nn.GRU(
             input_size + enc_hidden_size * 2,
             dec_hidden_size,
             num_layers,
             batch_first=True,
+            bidirectional=False,
         )
         self.fc_out = nn.Linear(dec_hidden_size, output_size)
         self.enc_hidden_size = enc_hidden_size
@@ -94,12 +96,15 @@ class TrajPredictor(nn.Module):
 
         # ---- Encoder ----
         enc_outputs, hidden = self.encoder(src)
-        hidden = torch.cat([hidden[-2], hidden[-1]], dim=1).unsqueeze(0)
 
-        if hidden.size(2) != self.decoder.hidden_size:
-            hidden = nn.Linear(hidden.size(2), self.decoder.hidden_size).to(
-                hidden.device
-            )(hidden)
+        # Concatenate forward & backward encoder hidden states
+        hidden = torch.cat([hidden[-2], hidden[-1]], dim=1)  # (batch, enc_hidden*2)
+
+        # Project to decoder hidden size
+        hidden = self.enc_to_dec(hidden).unsqueeze(0)  # (1, batch, dec_hidden_size)
+
+        # Repeat for all decoder layers
+        hidden = hidden.repeat(self.num_layers, 1, 1)  # (num_layers, batch, dec_hidden_size)
 
         # Determine prediction length
         if tgt is not None:

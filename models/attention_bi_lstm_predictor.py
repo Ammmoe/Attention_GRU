@@ -79,16 +79,19 @@ class TrajPredictor(nn.Module):
             outputs: [batch, pred_len, output_size]
         """
         # ---- Encoder ----
-        enc_outputs, (h, c) = self.encoder(
-            src
-        )  # h,c shape: (num_layers*2, batch, enc_hidden)
-        # concat last forward and backward hidden states
-        h = torch.cat([h[-2], h[-1]], dim=1)
+        enc_outputs, (h, c) = self.encoder(src)
+
+        # concat last forward and backward states
+        h = torch.cat([h[-2], h[-1]], dim=1)  # (batch, enc_hidden*2)
         c = torch.cat([c[-2], c[-1]], dim=1)
 
-        # project to decoder size if needed
+        # project to decoder size
         h = self.hidden_proj(h).unsqueeze(0)  # (1, batch, dec_hidden)
         c = self.hidden_proj(c).unsqueeze(0)  # (1, batch, dec_hidden)
+
+        # expand to match decoder num_layers
+        h = h.repeat(self.num_layers, 1, 1)  # (num_layers, batch, dec_hidden)
+        c = c.repeat(self.num_layers, 1, 1)  # (num_layers, batch, dec_hidden)
 
         if tgt is not None:
             pred_len = tgt.size(1)
