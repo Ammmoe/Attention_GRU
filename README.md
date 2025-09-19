@@ -125,10 +125,10 @@ NUM_PLOTS = 3  # number of plots generated after training
 
 After training, the script will:
 
-* Save the trained model file (`best_model.pt` and `last_model.pt`)
-* Save training configuration (`config.json`)
+* Save the trained model files (`best_model.pt` and `last_model.pt`)
+* Save the training configuration (`config.json`)
 * Save 3D plots of predicted vs ground-truth trajectories for selected examples
-* Print evaluation metrics: **MSE, RMSE, MAE, EDE (Euclidean Distance Error)**
+* Save detailed training logs, including evaluation metrics (MSE, RMSE, MAE, EDE)
 
 ---
 
