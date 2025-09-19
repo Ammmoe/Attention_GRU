@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from data.trajectory_loader import load_dataset
 from models.attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
+from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
 
 # Data settings and parameters
 DATA_TYPE = "mixed"  # Options: "zurich", "quadcopter", "mixed"
@@ -237,6 +238,47 @@ logger.info("Average inference time per batch: %.6f seconds", avg_inf_time_per_b
 # Concatenate all batches
 y_pred = torch.cat(all_preds, dim=0)
 y_true = torch.cat(all_trues, dim=0)
+
+# Compute evaluation metrics (inverse scaling applied)
+mse, rmse, mae, ede, axis_mse, axis_rmse, axis_mae = evaluate(
+    y_true, y_pred, scaler_y, num_agents=AGENTS
+)
+
+mse_x, mse_y, mse_z = axis_mse
+rmse_x, rmse_y, rmse_z = axis_rmse
+mae_x, mae_y, mae_z = axis_mae
+
+# Log metrics per axis and overall
+logger.info(
+    "Test Mean Squared Error (MSE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters^2",
+    AGENTS,
+    mse_x,
+    mse_y,
+    mse_z,
+)
+logger.info("Test Mean Squared Error (MSE) overall: %.6f meters^2", mse)
+
+logger.info(
+    "Test Root Mean Squared Error (RMSE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters",
+    AGENTS,
+    rmse_x,
+    rmse_y,
+    rmse_z,
+)
+logger.info("Test Root Mean Squared Error (RMSE) overall: %.6f meters", rmse)
+
+logger.info(
+    "Test Mean Absolute Error (MAE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters",
+    AGENTS,
+    mae_x,
+    mae_y,
+    mae_z,
+)
+logger.info("Test Mean Absolute Error (MAE) overall: %.6f meters", mae)
+
+logger.info(
+    "Test Euclidean Distance Error (EDE) (averaged over all agents): %.6f meters", ede
+)
 
 # Save config / hyperparameters
 config = {
