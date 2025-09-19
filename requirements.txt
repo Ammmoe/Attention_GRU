@@ -1,0 +1,11 @@
+# Python version
+# python>=3.12,<4.0
+
+# Core ML and data processing
+torch
+numpy
+pandas
+scikit-learn
+
+# Plotting
+matplotlib
