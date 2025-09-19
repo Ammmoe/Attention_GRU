@@ -88,6 +88,7 @@ class TrajPredictor(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.ln = nn.LayerNorm(hidden_size)
 
     def forward(self, x, pred_len=1):
         """
@@ -102,6 +103,7 @@ class TrajPredictor(nn.Module):
         """
         # Encode past trajectory
         encoder_outputs, hidden = self.encoder(x)
+        encoder_outputs = self.ln(encoder_outputs)
 
         # First decoder input = last input point
         decoder_input = x[:, -1:, :]

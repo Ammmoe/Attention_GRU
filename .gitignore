@@ -1,5 +1,5 @@
 experiments/
-data/*.csv
+# data/*.csv
 
 # Ignore all __pycache__ directories recursively
 __pycache__/
