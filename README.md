@@ -21,7 +21,7 @@ This repository contains a **sequence-to-coordinate trajectory prediction traini
 
 ```bash
 pip install -r requirements.txt
-````
+```
 
 Minimum recommended environment:
 
