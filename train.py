@@ -7,12 +7,12 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 
 from data.trajectory_loader import load_dataset
 from models.attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
 from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
+from utils.plot_generator import plot_trajectories
 
 # Data settings and parameters
 DATA_TYPE = "mixed"  # Options: "zurich", "quadcopter", "mixed"
@@ -283,6 +283,8 @@ logger.info(
 # Save config / hyperparameters
 config = {
     "device": str(device),
+    "model_module": model.__class__.__module__,
+    "model_class": model.__class__.__name__,
     "model_params": model_params,
     "DATA_TYPE": DATA_TYPE,
     "AGENTS": AGENTS,
@@ -299,63 +301,22 @@ with open(config_path, "w", encoding="utf-8") as f:
 
 logger.info("Config saved to %s", config_path)
 
-# --- Group results back by trajectory_index ---
+# Group results back by trajectory_index
 traj_test = traj_test[: len(y_true)]  # align just in case
-
 unique_trajs = np.unique(traj_test)
-
-# Dynamically generate N colors from a colormap
-COLORS = [plt.get_cmap("tab10")(i % 10) for i in range(AGENTS)]
 
 # Randomly select trajectories to plot
 plot_trajs = np.random.choice(
     unique_trajs, size=min(NUM_PLOTS, len(unique_trajs)), replace=False
+).tolist()
+
+# Plot trajectories using the helper function
+plot_trajectories(
+    y_true=y_true.numpy(),
+    y_pred=y_pred.numpy(),
+    traj_ids=traj_test,
+    plot_trajs=plot_trajs,
+    scaler=scaler_y,
+    agents=AGENTS,
+    save_dir=exp_dir,
 )
-
-for traj_idx in plot_trajs:
-    mask = traj_test == traj_idx
-    true_traj = scaler_y.inverse_transform(y_true[mask].numpy())
-    pred_traj = scaler_y.inverse_transform(y_pred[mask].numpy())
-
-    fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection="3d")
-
-    DIM = 3  # 3D plot
-    for agent in range(AGENTS):
-        start = agent * DIM
-        end = start + DIM
-
-        # True trajectory for this agent
-        ax.plot(
-            true_traj[:, start],
-            true_traj[:, start + 1],
-            true_traj[:, start + 2],
-            label=f"Agent {agent + 1} True",
-            color=COLORS[agent],
-        )
-
-        # Predicted trajectory for this agent
-        ax.plot(
-            pred_traj[:, start],
-            pred_traj[:, start + 1],
-            pred_traj[:, start + 2],
-            label=f"Agent {agent + 1} Pred",
-            color=COLORS[agent],
-            linestyle="--",
-        )
-
-    ax.set_title(f"Trajectory {traj_idx} (True vs Predicted)")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_label("Z")
-    ax.legend()
-
-    # --- Save PNGs ---
-    plot_path = os.path.join(exp_dir, f"trajectory_{traj_idx}.png")
-    plt.savefig(plot_path, dpi=150)
-
-    # --- For interactive viewing ---
-    plt.show()
-    plt.close()
-
-    logger.info("Plotted trajectory %s", traj_idx)
