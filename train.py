@@ -35,6 +35,7 @@ from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
 from utils.plot_generator import plot_trajectories
 
 
+# pylint: disable=all
 # Data settings and parameters
 DATA_TYPE = "mixed"  # Options: "zurich", "quadcopter", "mixed"
 AGENTS = 3  # Number of agents or drones
