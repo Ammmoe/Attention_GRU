@@ -1,3 +1,23 @@
+"""
+train.py
+
+This script handles the end-to-end training, evaluation, and visualization of a
+multi-agent 3D trajectory prediction model using an attention-based BiGRU network.
+
+Main functionalities include:
+1. Loading and preprocessing multi-agent trajectory datasets, including sequence
+generation and MinMax scaling.
+2. Defining and training the TrajPredictor model with early stopping and logging.
+3. Evaluating the trained model using multiple metrics such as MSE, RMSE, MAE,
+and Euclidean Distance Error (EDE), both overall and per-axis averaged across agents.
+4. Logging training progress, evaluation results, and saving model checkpoints.
+5. Saving experiment configurations and plotting selected predicted vs. true trajectories
+for qualitative inspection.
+
+The script supports GPU acceleration if available and is configurable for different
+datasets, numbers of agents, sequence lengths, and training hyperparameters.
+"""
+
 import os
 import time
 import json
@@ -13,6 +33,7 @@ from models.attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
 from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
 from utils.plot_generator import plot_trajectories
+
 
 # Data settings and parameters
 DATA_TYPE = "mixed"  # Options: "zurich", "quadcopter", "mixed"
@@ -231,7 +252,7 @@ avg_inf_time_per_seq = total_inf_time / total_sequences
 avg_inf_time_per_batch = total_inf_time / len(test_loader)
 
 # Log final test metrics
-logger.info("Test Loss (scaled): %.6f", avg_test_loss)
+logger.info("Test Loss (scaled): %.7f", avg_test_loss)
 logger.info("Average inference time per sequence: %.6f seconds", avg_inf_time_per_seq)
 logger.info("Average inference time per batch: %.6f seconds", avg_inf_time_per_batch)
 
