@@ -1,50 +1,61 @@
 """
 trajectory_loader.py
 
-This module provides utilities to load flight trajectory data from a CSV file
-and prepare it for model training. Specifically, it extracts position information
-(x, y, z) from flights that meet a minimum length requirement, converts
-latitude/longitude to meters, concatenates multiple flights side by side, truncates
-to the shortest flight to avoid NaNs, and adds a sequential block index for easier
-plotting or analysis.
+This module provides dataset-specific loaders for flight trajectory data:
+- Quadcopter dataset (data/flights.csv)
+- Zurich MAV dataset (data/zurich.csv)
+- Mixed dataset (combine both)
+
+Each loader prepares the data for model training:
+- Converts lat/lon to meters
+- Extracts position information (x, y, z)
+- Concatenates multiple flights side by side
+- Truncates to the shortest flight to avoid NaNs
+- Adds a sequential trajectory index for plotting/analysis
 """
 
 import pandas as pd
 from utils.coordinate_converter import latlon_to_meters
 
 
-def load_and_concat_flights(
-    csv_path,
-    min_rows=1000,
+def _concat_flights_into_blocks(flights, num_flights, position_columns):
+    """
+    Helper to concatenate flights into blocks of num_flights side by side.
+    """
+    concatenated_blocks = []
+    trajectory_counter = 1
+
+    for i in range(0, len(flights) - num_flights + 1):
+        block_flights = flights[i : i + num_flights]
+        min_len = min(f.shape[0] for f in block_flights)
+        truncated_dfs = [f.iloc[:min_len] for f in block_flights]
+        concatenated = pd.concat(truncated_dfs, axis=1)
+
+        # Rename columns
+        new_columns = []
+        for j in range(1, num_flights + 1):
+            new_columns.extend([f"{col}_flight{j}" for col in position_columns])
+        concatenated.columns = new_columns
+
+        concatenated["trajectory_index"] = trajectory_counter
+        trajectory_counter += 1
+        concatenated_blocks.append(concatenated)
+
+    return pd.concat(concatenated_blocks, ignore_index=True)
+
+
+def load_quadcopter_dataset(
+    csv_path="data/flights.csv",
+    min_rows=800,
     num_flights=3,
     position_columns=None,
-    add_zurich_csv=False,
-    zurich_csv_path=None,
 ) -> pd.DataFrame:
     """
-    Load flight data from CSV, filter flights with at least `min_rows` rows,
-    convert latitude/longitude to meters, and concatenate `num_flights` of them
-    side by side using the shortest flight length.
-    Adds a sequential block index column.
-    
-    Optionally, include the Zurich dataset as pseudo-trajectories split by min_rows.
-
-    Args:
-        csv_path (str): Path to the CSV file.
-        min_rows (int): Minimum number of rows a flight must have to be selected.
-        num_flights (int): Number of flights to concatenate side by side.
-        position_columns (list, optional): Columns to extract (default ['position_x', 'position_y', 'position_z']).
-        add_zurich_csv (bool): If True, append Zurich CSV as pseudo-trajectories.
-        zurich_csv_path (str, optional): Path to Zurich CSV file.
-
-    Returns:
-        pd.DataFrame: Concatenated DataFrame with selected flights and optionally Zurich blocks.
+    Load and process the Quadcopter dataset into a ready-to-use DataFrame.
     """
-
     if position_columns is None:
         position_columns = ["position_x", "position_y", "position_z"]
 
-    # --- Process main CSV ---
     df = pd.read_csv(csv_path)
     grouped = df.groupby("flight")
     converted_flights = []
@@ -70,72 +81,103 @@ def load_and_concat_flights(
             f"Not enough flights with at least {min_rows} rows. Found {len(converted_flights)}."
         )
 
-    concatenated_blocks = []
-    trajectory_counter = 1
+    return _concat_flights_into_blocks(converted_flights, num_flights, position_columns)
 
-    # --- Create blocks from main CSV ---
-    for i in range(0, len(converted_flights) - num_flights + 1):
-        block_flights = converted_flights[i : i + num_flights]
-        min_len = min(f.shape[0] for f in block_flights)
-        truncated_dfs = [f.iloc[:min_len] for f in block_flights]
-        concatenated = pd.concat(truncated_dfs, axis=1)
 
-        # Rename columns
-        new_columns = []
-        for j, f in enumerate(truncated_dfs, start=1):
-            new_columns.extend([f"{col}_flight{j}" for col in position_columns])
-        concatenated.columns = new_columns
+def load_zurich_dataset(
+    csv_path="data/zurich_flights_downsampled_2.csv",
+    min_rows=800,
+    num_flights=3,
+    position_columns=None,
+) -> pd.DataFrame:
+    """
+    Load and process the Zurich MAV dataset into a ready-to-use DataFrame.
+    """
+    if position_columns is None:
+        position_columns = ["position_x", "position_y", "position_z"]
 
-        concatenated["trajectory_index"] = trajectory_counter
-        trajectory_counter += 1
-        concatenated_blocks.append(concatenated)
+    zurich_df = pd.read_csv(csv_path, sep=None, engine="python")
+    zurich_df.columns = zurich_df.columns.str.strip()
 
-    # --- Optionally process Zurich dataset ---
-    if add_zurich_csv and zurich_csv_path is not None:
-        zurich_df = pd.read_csv(zurich_csv_path, sep=None, engine="python")
-        zurich_df.columns = zurich_df.columns.str.strip()
-        print(zurich_df.columns.tolist())
+    # Convert lat/lon to meters using first row as reference
+    x_m, y_m = latlon_to_meters(
+        zurich_df["lat"],
+        zurich_df["lon"],
+        ref_lat=zurich_df["lat"].iloc[0],
+        ref_lon=zurich_df["lon"].iloc[0],
+    )
+    zurich_df = zurich_df.copy()
+    zurich_df["position_x"] = x_m
+    zurich_df["position_y"] = y_m
+    zurich_df["position_z"] = zurich_df["alt"]
 
-        # Convert lat/lon to meters using first row as reference
-        x_m, y_m = latlon_to_meters(
-            zurich_df["lat"],
-            zurich_df["lon"],
-            ref_lat=zurich_df["lat"].iloc[0],
-            ref_lon=zurich_df["lon"].iloc[0],
+    zurich_positions = zurich_df[position_columns].reset_index(drop=True)
+    total_rows = zurich_positions.shape[0]
+
+    # Split into non-overlapping pseudo-trajectories
+    pseudo_trajectories = [
+        zurich_positions.iloc[i : i + min_rows].reset_index(drop=True)
+        for i in range(0, total_rows, min_rows)
+        if i + min_rows <= total_rows
+    ]
+
+    if len(pseudo_trajectories) < num_flights:
+        raise ValueError(
+            f"Not enough Zurich pseudo-trajectories with at least {min_rows} rows. Found {len(pseudo_trajectories)}."
         )
-        zurich_df = zurich_df.copy()
-        zurich_df["position_x"] = x_m
-        zurich_df["position_y"] = y_m
-        zurich_df["position_z"] = zurich_df["alt"]
 
-        # Only keep positional columns
-        zurich_positions = zurich_df[position_columns].reset_index(drop=True)
-        total_rows = zurich_positions.shape[0]
+    return _concat_flights_into_blocks(
+        pseudo_trajectories, num_flights, position_columns
+    )
 
-        # Split Zurich sequentially into non-overlapping pseudo-trajectories
-        pseudo_trajectories = [
-            zurich_positions.iloc[i : i + min_rows].reset_index(drop=True)
-            for i in range(0, total_rows, min_rows)
-            if i + min_rows <= total_rows  # drop last incomplete chunk
-        ]
 
-        # Create blocks from sequential pseudo-trajectories
-        for block_start in range(0, len(pseudo_trajectories) - num_flights + 1):
-            block_flights = pseudo_trajectories[block_start : block_start + num_flights]
-            min_len = min(f.shape[0] for f in block_flights)
-            truncated_dfs = [f.iloc[:min_len] for f in block_flights]
-            concatenated = pd.concat(truncated_dfs, axis=1)
+def load_mixed_dataset(
+    quadcopter_csv="data/flights.csv",
+    zurich_csv="data/zurich_flights_downsampled_2.csv",
+    min_rows=800,
+    num_flights=3,
+    position_columns=None,
+) -> pd.DataFrame:
+    """
+    Load and combine Quadcopter + Zurich datasets into a single DataFrame.
+    """
+    if position_columns is None:
+        position_columns = ["position_x", "position_y", "position_z"]
 
-            # Rename columns
-            new_columns = []
-            for j in range(1, num_flights + 1):
-                new_columns.extend([f"{col}_flight{j}" for col in position_columns])
-            concatenated.columns = new_columns
+    quad_df = load_quadcopter_dataset(
+        quadcopter_csv, min_rows, num_flights, position_columns
+    )
+    zurich_df = load_zurich_dataset(zurich_csv, min_rows, num_flights, position_columns)
 
-            concatenated["trajectory_index"] = trajectory_counter
-            trajectory_counter += 1
-            concatenated_blocks.append(concatenated)
+    return pd.concat([quad_df, zurich_df], ignore_index=True)
 
-    # Combine all blocks into single DataFrame
-    final_df = pd.concat(concatenated_blocks, ignore_index=True)
-    return final_df
+
+def load_dataset(
+    data_type: str, min_rows=1000, num_flights=3, position_columns=None
+) -> pd.DataFrame:
+    """
+    General loader to select dataset type.
+    """
+
+    if data_type.lower() == "quadcopter":
+        return load_quadcopter_dataset(
+            min_rows=min_rows,
+            num_flights=num_flights,
+            position_columns=position_columns,
+        )
+    elif data_type.lower() == "zurich":
+        return load_zurich_dataset(
+            min_rows=min_rows,
+            num_flights=num_flights,
+            position_columns=position_columns,
+        )
+    elif data_type.lower() == "mixed":
+        return load_mixed_dataset(
+            min_rows=min_rows,
+            num_flights=num_flights,
+            position_columns=position_columns,
+        )
+    else:
+        raise ValueError(
+            f"Unknown DATA_TYPE '{data_type}'. Choose from 'quadcopter', 'zurich', 'mixed'."
+        )

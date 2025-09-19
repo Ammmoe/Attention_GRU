@@ -9,14 +9,16 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
-from data.trajectory_loader import load_and_concat_flights
+from data.trajectory_loader import load_dataset
 from models.attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
+
+# Settings
+DATA_TYPE = "quadcopter"  # Options: "zurich", "quadcopter", "mixed"
 
 # --- Parameters ---
 LOOK_BACK = 50
 FORWARD_LEN = 5
-CSV_PATH = "data/flights.csv"
 BATCH_SIZE = 32
 EPOCHS = 500
 LEARNING_RATE = 1e-3
@@ -30,12 +32,10 @@ logger.info("Experiment started")
 logger.info("Experiment folder: %s", exp_dir)
 
 # --- Load DataFrame ---
-df = load_and_concat_flights(
-    CSV_PATH,
+df = load_dataset(
+    DATA_TYPE,
     min_rows=800,
     num_flights=AGENTS,
-    add_zurich_csv=True,
-    zurich_csv_path="data/zurich_flights_downsampled_2.csv",
 )
 
 # --- Prepare sequences ---
