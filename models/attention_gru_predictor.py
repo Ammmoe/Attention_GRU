@@ -45,11 +45,11 @@ class Attention(nn.Module):
         # Concatenate and compute scores
         energy = torch.tanh(
             self.attn(torch.cat((decoder_hidden, encoder_outputs), dim=2))
-        )
+        ) # (batch, seq_len, hidden_size)
         attn_scores = self.v(energy).squeeze(-1)  # (batch, seq_len)
 
         # Softmax to get attention weights
-        attn_weights = F.softmax(attn_scores, dim=1)
+        attn_weights = F.softmax(attn_scores, dim=1) # (batch, seq_len)
 
         # Weighted sum (context vector)
         context = torch.bmm(
@@ -112,7 +112,7 @@ class TrajPredictor(nn.Module):
         for _ in range(pred_len):
             # Attention
             dec_hidden_t = hidden[-1]  # (batch, hidden_size)
-            context, _ = self.attention(dec_hidden_t, encoder_outputs)
+            context, _ = self.attention(dec_hidden_t, encoder_outputs)  # (context, attn_weights)
 
             # Combine decoder input + context
             dec_input = torch.cat([decoder_input.squeeze(1), context], dim=1)
