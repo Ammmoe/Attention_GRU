@@ -13,6 +13,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+import seaborn as sns
 
 
 def plot_trajectories(
@@ -90,3 +91,36 @@ def plot_trajectories(
         # Show interactively
         plt.show()
         plt.close()
+
+
+def plot_attention_heatmap(attention_weights, save_dir):
+    """
+    Plots and saves an agent-level attention heatmap.
+
+    Args:
+        attention_weights (np.array): Shape (T, A) - Attention weights for one sample.
+            - T: Number of timesteps (LOOK_BACK)
+            - A: Number of agents
+        save_path (str): Path to save the figure.
+    """
+    plt.figure(figsize=(8, 12))
+    ax = sns.heatmap(
+        attention_weights, 
+        cmap='viridis', 
+        linewidths=.5,
+        cbar_kws={'label': 'Attention Weight'}
+    )
+    ax.set_title('Agent Attention Weights Over Time')
+    ax.set_xlabel('Agent Index')
+    ax.set_ylabel('Input Timestep')
+    ax.set_xticks(np.arange(attention_weights.shape[1]) + 0.5)
+    ax.set_xticklabels([str(i) for i in range(attention_weights.shape[1])])
+    
+    # Save the figure
+    os.makedirs(os.path.dirname(save_dir), exist_ok=True)
+    plot_path = os.path.join(save_dir, "attention_heatmap.png")
+    plt.savefig(plot_path, dpi=150)
+    
+    # Show interactively
+    plt.show()
+    plt.close()
