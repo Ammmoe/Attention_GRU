@@ -55,30 +55,30 @@ class TrajPredictor(nn.Module):
 
     def __init__(
         self,
-        features_per_drone=3,
+        input_size,
         enc_hidden_size=64,
         dec_hidden_size=64,
         num_layers=1,
     ):
         super().__init__()
-        self.features_per_drone = features_per_drone
+        self.input_size = input_size
         self.encoder = nn.GRU(
-            input_size=features_per_drone,
-            hidden_size=enc_hidden_size,
-            num_layers=num_layers,
+            input_size,
+            enc_hidden_size,
+            num_layers,
             batch_first=True,
             bidirectional=True,
         )
         self.attention = Attention(enc_hidden_size * 2, dec_hidden_size)
         self.enc_to_dec = nn.Linear(enc_hidden_size * 2, dec_hidden_size)
         self.decoder = nn.GRU(
-            input_size=features_per_drone + enc_hidden_size * 2,
+            input_size=input_size + enc_hidden_size * 2,
             hidden_size=dec_hidden_size,
             num_layers=num_layers,
             batch_first=True,
             bidirectional=False,
         )
-        self.fc_out = nn.Linear(dec_hidden_size, features_per_drone)
+        self.fc_out = nn.Linear(dec_hidden_size, input_size)
         self.enc_hidden_size = enc_hidden_size
         self.dec_hidden_size = dec_hidden_size
         self.num_layers = num_layers
@@ -93,15 +93,9 @@ class TrajPredictor(nn.Module):
         Returns:
             outputs: [batch_size, pred_len, output_size] predicted future trajectory
         """
-        # Get dimensions
-        batch_size, timesteps, total_features = src.shape
-        agents = total_features // self.features_per_drone
-
-        # Reshape input to (batch_size * agents, timesteps, features_per_drone)
-        src_reshaped = src.view(batch_size * agents, timesteps, self.features_per_drone)
 
         # ---- Encoder ----
-        enc_outputs, hidden = self.encoder(src_reshaped)
+        enc_outputs, hidden = self.encoder(src)
 
         # Concatenate forward & backward encoder hidden states
         hidden = torch.cat([hidden[-2], hidden[-1]], dim=1)  # (batch, enc_hidden*2)
@@ -115,19 +109,15 @@ class TrajPredictor(nn.Module):
         )  # (num_layers, batch, dec_hidden_size)
 
         # Determine prediction length
-        tgt_reshaped = None
         if tgt is not None:
             pred_len = tgt.size(1)
-            tgt_reshaped = tgt.view(
-                batch_size * agents, pred_len, self.features_per_drone
-            )
         elif pred_len is None:
             raise ValueError("Either tgt or pred_len must be provided")
 
         # ---- Decoder ----
         outputs = []
         # Initial decoder input: last src point
-        dec_input = src_reshaped[:, -1:, :]
+        dec_input = src[:, -1:, :]
 
         for t in range(pred_len):
             # Attention
@@ -141,17 +131,14 @@ class TrajPredictor(nn.Module):
             outputs.append(pred.unsqueeze(1))
 
             # Next decoder input
-            if tgt_reshaped is not None:
+            if tgt is not None:
                 # teacher forcing
-                dec_input = tgt_reshaped[:, t : t + 1, :]
+                dec_input = tgt[:, t : t + 1, :]
             else:
                 # autoregressive
                 dec_input = pred.unsqueeze(1)
 
-        outputs = torch.cat(
-            outputs, dim=1
-        )  # (batch_size * agents, pred_len, output_size)
-        outputs = outputs.view(batch_size, pred_len, agents * self.features_per_drone)
+        outputs = torch.cat(outputs, dim=1) # (batch_size * agents, pred_len, output_size)
 
         # Return squeezed version if only one step is predicted
         if pred_len == 1:
