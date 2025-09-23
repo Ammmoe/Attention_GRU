@@ -175,9 +175,9 @@ class TrajPredictor(nn.Module):
             outputs_2d: (B*pred_len, output_size)
             attn_weights: (B, T, A) - Optional, returned if return_attn is True
         """
-        B, T, _ = x.size()
-        A = 3
+        B, T, feat_total = x.size()
         agent_feat_dim = 3
+        A = feat_total // agent_feat_dim
         x_agents = x.view(B, T, A, agent_feat_dim)
 
         # ---- Agent-level attention per timestep ----
@@ -197,12 +197,12 @@ class TrajPredictor(nn.Module):
         all_agent_attn_weights = torch.cat(agent_attn_weights_list, dim=1)  # (B, T, A)
 
         # ---- Temporal encoding ----
-        encoder_outputs, hidden = self.encoder(timestep_reprs)
-        hidden_cat = torch.cat([hidden[0], hidden[1]], dim=1)
-        hidden_dec = torch.tanh(self.enc2dec(hidden_cat)).unsqueeze(0)
+        encoder_outputs, hidden = self.encoder(timestep_reprs) # (B, T, 2*H), (2, B, H)
+        hidden_cat = torch.cat([hidden[0], hidden[1]], dim=1) # (B, 2*H)
+        hidden_dec = torch.tanh(self.enc2dec(hidden_cat)).unsqueeze(0) # (1, B, H)
 
         # ---- Autoregressive decoding ----
-        decoder_input = x[:, -1:, :]
+        decoder_input = x[:, -1:, :] # (B, 1, A*F)
         outputs = []
 
         for _ in range(pred_len):
