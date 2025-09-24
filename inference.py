@@ -2,8 +2,9 @@ from pathlib import Path
 import json
 import torch
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
+import joblib
+from sklearn.preprocessing import MinMaxScaler
 import os
 
 from data.trajectory_loader import load_dataset
@@ -12,7 +13,7 @@ from models.attention_bi_gru_predictor import TrajPredictor
 # ----------------------------
 # Helper: plot full trajectory
 # ----------------------------
-def plot_full_trajectory(y_true, y_pred, scaler, agents, save_dir, filename="trajectory.png"):
+def plot_full_trajectory(y_true, y_pred, agents, save_dir, filename="trajectory.png"):
     """
     Plot full multi-agent 3D trajectory (ground-truth vs predicted).
 
@@ -24,8 +25,6 @@ def plot_full_trajectory(y_true, y_pred, scaler, agents, save_dir, filename="tra
         save_dir (str): Directory to save plot
         filename (str): Name of the PNG file
     """
-    y_true_inv = scaler.inverse_transform(y_true.reshape(-1, y_true.shape[-1]))
-    y_pred_inv = scaler.inverse_transform(y_pred.reshape(-1, y_pred.shape[-1]))
 
     dim = 3
     colors = [plt.get_cmap("tab10")(i % 10) for i in range(agents)]
@@ -37,17 +36,17 @@ def plot_full_trajectory(y_true, y_pred, scaler, agents, save_dir, filename="tra
         start = agent * dim
         # True trajectory
         ax.plot(
-            y_true_inv[:, start],
-            y_true_inv[:, start + 1],
-            y_true_inv[:, start + 2],
+            y_true[:, start],
+            y_true[:, start + 1],
+            y_true[:, start + 2],
             label=f"Agent {agent + 1} True",
             color=colors[agent],
         )
         # Predicted trajectory
         ax.plot(
-            y_pred_inv[:, start],
-            y_pred_inv[:, start + 1],
-            y_pred_inv[:, start + 2],
+            y_pred[:, start],
+            y_pred[:, start + 1],
+            y_pred[:, start + 2],
             label=f"Agent {agent + 1} Pred",
             color=colors[agent],
             linestyle="--",
@@ -68,7 +67,7 @@ def plot_full_trajectory(y_true, y_pred, scaler, agents, save_dir, filename="tra
 # ----------------------------
 # Paths & Config
 # ----------------------------
-experiment_dir = Path("experiments/20250923_094137")
+experiment_dir = Path("experiments/20250924_104755")
 CONFIG_PATH = experiment_dir / "config.json"
 MODEL_PATH = experiment_dir / "best_model.pt"
 
@@ -85,14 +84,20 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ----------------------------
 # Load model
 # ----------------------------
-model = TrajPredictor(**config["model_params"]).to(device)
+model_params = {
+    "input_size": AGENTS * 3,
+    "enc_hidden_size": 64,
+    "dec_hidden_size": 64,
+    "num_layers": 1,
+}
+model = TrajPredictor(**model_params).to(device)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 model.eval()
 
 # ----------------------------
 # Load dataset
 # ----------------------------
-df = load_dataset(DATA_TYPE, min_rows=100, num_flights=AGENTS)
+df = load_dataset(DATA_TYPE, min_rows=200, num_flights=AGENTS)
 
 # Pick a random trajectory
 traj_idx = np.random.choice(df["trajectory_index"].unique())
@@ -103,45 +108,67 @@ total_len = traj_data.shape[0]
 # ----------------------------
 # Scale full trajectory
 # ----------------------------
-scaler_X = MinMaxScaler(feature_range=(0, 1))
-scaler_y = MinMaxScaler(feature_range=(0, 1))
+scaler_X_path = experiment_dir / "scaler_X.pkl"
+scaler_y_path = experiment_dir / "scaler_y.pkl"
+scaler_X = joblib.load(scaler_X_path)
+scaler_y = joblib.load(scaler_y_path)
+
+# scaler_X = MinMaxScaler(feature_range=(0, 1))
+# scaler_y = MinMaxScaler(feature_range=(0, 1))
+
 scaler_X.fit(traj_data)
 scaler_y.fit(traj_data)
 
-traj_scaled = scaler_X.transform(traj_data)
+# ----------------------------
+# Scale input sequence
+# ----------------------------
+traj_scaled_X = scaler_X.transform(traj_data)   # for feeding into model
+traj_scaled_y = scaler_y.transform(traj_data)   # for prediction comparison
 
 # ----------------------------
 # Predict full trajectory iteratively
 # ----------------------------
 y_pred_scaled = []
-input_seq = traj_scaled[:LOOK_BACK].copy()  # (LOOK_BACK, features)
+input_seq = traj_scaled_X[:LOOK_BACK].copy()  # use X-scaler for model inputs
 
 with torch.no_grad():
-    for i in range(total_len - LOOK_BACK):
+    for i in range(total_len - LOOK_BACK - FORWARD_LEN + 1):
         X_tensor = torch.from_numpy(input_seq[-LOOK_BACK:].reshape(1, LOOK_BACK, -1)).float().to(device)
-        pred = model(X_tensor, pred_len=FORWARD_LEN).cpu().numpy()  # (1, num_features * FORWARD_LEN)
+        pred = model(X_tensor).cpu().numpy()
         
-        # Take only the first step predicted
-        first_step = pred[0, :input_seq.shape[1]]  # shape = (num_features,)
-        
-        input_seq = np.vstack([input_seq, first_step])
-        y_pred_scaled.append(first_step)
+        y_pred_scaled.append(pred)
 
-y_pred_scaled = np.array(y_pred_scaled)  # shape = (total_len - LOOK_BACK, num_features)
+        # Teacher forcing: append ground truth NEXT step (scaled with X for inputs)
+        next_step = traj_scaled_X[i + LOOK_BACK]
+        input_seq = np.vstack([input_seq, next_step])
+
+y_pred_scaled = np.array(y_pred_scaled).squeeze(1)  # (timesteps, features)
 
 # ----------------------------
-# Ground truth aligned for plotting
+# Ground truth aligned (scaled with y-scaler)
 # ----------------------------
-y_true_scaled = traj_scaled[LOOK_BACK:]  # exclude initial LOOK_BACK
+y_true_scaled = traj_scaled_y[LOOK_BACK + FORWARD_LEN - 1:]
+
+# inverse scale for plotting
+y_true = scaler_y.inverse_transform(
+    y_true_scaled.reshape(-1, y_true_scaled.shape[-1])
+).reshape(y_true_scaled.shape)
+
+y_pred = scaler_y.inverse_transform(
+    y_pred_scaled.reshape(-1, y_pred_scaled.shape[-1])
+).reshape(y_pred_scaled.shape)
+
+print("y_true shape:", y_true.shape)
+print("y_pred shape:", y_pred.shape)
+print("Expected features:", AGENTS * 3)
 
 # ----------------------------
 # Plot full trajectory
 # ----------------------------
 plot_full_trajectory(
-    y_true=y_true_scaled,
-    y_pred=y_pred_scaled,
-    scaler=scaler_y,
+    y_true=y_true,
+    y_pred=y_pred,
     agents=AGENTS,
     save_dir=str(experiment_dir),
-    filename=f"full_trajectory_{traj_idx}.png"
+    filename=f"inference_trajectory_{traj_idx}.png"
 )
