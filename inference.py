@@ -8,7 +8,7 @@ from sklearn.preprocessing import MinMaxScaler
 import os
 
 from data.trajectory_loader import load_dataset
-from models.attention_bi_gru_predictor import TrajPredictor
+from models.modified_attention_bi_gru_predictor import TrajPredictor
 
 # ----------------------------
 # Helper: plot full trajectory
@@ -67,7 +67,7 @@ def plot_full_trajectory(y_true, y_pred, agents, save_dir, filename="trajectory.
 # ----------------------------
 # Paths & Config
 # ----------------------------
-experiment_dir = Path("experiments/20250924_104755")
+experiment_dir = Path("experiments/20250924_153814")
 CONFIG_PATH = experiment_dir / "config.json"
 MODEL_PATH = experiment_dir / "best_model.pt"
 
@@ -75,7 +75,8 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     config = json.load(f)
 
 DATA_TYPE = config["DATA_TYPE"]
-AGENTS = config["AGENTS"]
+# AGENTS = config["AGENTS"]
+AGENTS = 8
 LOOK_BACK = config["LOOK_BACK"]
 FORWARD_LEN = config["FORWARD_LEN"]  # steps predicted at each iteration
 
@@ -85,7 +86,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Load model
 # ----------------------------
 model_params = {
-    "input_size": AGENTS * 3,
     "enc_hidden_size": 64,
     "dec_hidden_size": 64,
     "num_layers": 1,
@@ -108,13 +108,13 @@ total_len = traj_data.shape[0]
 # ----------------------------
 # Scale full trajectory
 # ----------------------------
-scaler_X_path = experiment_dir / "scaler_X.pkl"
-scaler_y_path = experiment_dir / "scaler_y.pkl"
-scaler_X = joblib.load(scaler_X_path)
-scaler_y = joblib.load(scaler_y_path)
+# scaler_X_path = experiment_dir / "scaler_X.pkl"
+# scaler_y_path = experiment_dir / "scaler_y.pkl"
+# scaler_X = joblib.load(scaler_X_path)
+# scaler_y = joblib.load(scaler_y_path)
 
-# scaler_X = MinMaxScaler(feature_range=(0, 1))
-# scaler_y = MinMaxScaler(feature_range=(0, 1))
+scaler_X = MinMaxScaler(feature_range=(0, 1))
+scaler_y = MinMaxScaler(feature_range=(0, 1))
 
 scaler_X.fit(traj_data)
 scaler_y.fit(traj_data)
