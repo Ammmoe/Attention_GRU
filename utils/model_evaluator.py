@@ -35,6 +35,7 @@ mse, rmse, mae, ede, axis_mse, axis_rmse, axis_mae = evaluate_metrics_multi_agen
 import torch
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+from utils.scaler import scale_per_agent
 
 
 def evaluate_metrics_multi_agent(
@@ -62,8 +63,12 @@ def evaluate_metrics_multi_agent(
     )
 
     # --- Inverse scaling ---
-    y_true_np = scaler.inverse_transform(y_true.cpu().numpy())
-    y_pred_np = scaler.inverse_transform(y_pred.cpu().numpy())
+    y_true_np = scale_per_agent(
+        y_true.cpu().numpy(), scaler, num_features_per_agent=3, inverse=True
+    )
+    y_pred_np = scale_per_agent(
+        y_pred.cpu().numpy(), scaler, num_features_per_agent=3, inverse=True
+    )
 
     # --- Reshape to (num_points, num_agents, 3) ---
     y_true_reshaped = y_true_np.reshape(-1, num_agents, num_features_per_agent)

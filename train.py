@@ -23,16 +23,18 @@ import time
 import json
 import numpy as np
 import torch
+import joblib
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 from data.trajectory_loader import load_dataset
-from models.attention_bi_gru_predictor import TrajPredictor
+from models.modified_attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
 from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
 from utils.plot_generator import plot_trajectories
+from utils.scaler import scale_per_agent
 
 
 # pylint: disable=all
@@ -41,6 +43,7 @@ DATA_TYPE = "zurich"  # Options: "zurich", "quadcopter", "mixed"
 AGENTS = 3  # Number of agents or drones
 LOOK_BACK = 50  # Number of past time steps to use as input
 FORWARD_LEN = 5  # Number of future time steps to predict
+FEATURES_PER_AGENT = 3  # x, y, z
 
 # Training parameters
 BATCH_SIZE = 32
@@ -104,19 +107,16 @@ scaler_X = MinMaxScaler(feature_range=(0, 1))
 scaler_y = MinMaxScaler(feature_range=(0, 1))
 
 # Fit scalers on training data only
-# X needs to be reshaped to 2D for scaler
-scaler_X.fit(X_train.reshape(-1, num_features_X))
-X_train_scaled = scaler_X.transform(X_train.reshape(-1, num_features_X)).reshape(
-    X_train.shape
-)
-X_test_scaled = scaler_X.transform(X_test.reshape(-1, num_features_X)).reshape(
-    X_test.shape
-)
+X_train_scaled = scale_per_agent(X_train, scaler_X, FEATURES_PER_AGENT, fit=True)
+X_test_scaled = scale_per_agent(X_test, scaler_X, FEATURES_PER_AGENT, fit=False)
 
 # y is already 2D
-scaler_y.fit(y_train)
-y_train_scaled = scaler_y.transform(y_train)
-y_test_scaled = scaler_y.transform(y_test)
+y_train_scaled = scale_per_agent(y_train, scaler_y, FEATURES_PER_AGENT, fit=True)
+y_test_scaled = scale_per_agent(y_test, scaler_y, FEATURES_PER_AGENT, fit=False)
+
+# Save scalers
+joblib.dump(scaler_X, os.path.join(exp_dir, "scaler_X.pkl"))
+joblib.dump(scaler_y, os.path.join(exp_dir, "scaler_y.pkl"))
 
 # Convert to tensors
 X_train_tensor = torch.tensor(
