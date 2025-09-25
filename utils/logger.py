@@ -104,7 +104,9 @@ def get_inference_logger(exp_dir, log_name="inference.log"):
         # --- Write a session header ---
         logger.info("\n")
         logger.info("%s", "=" * 80)
-        logger.info("NEW INFERENCE SESSION - %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        logger.info(
+            "NEW INFERENCE SESSION - %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
         logger.info("%s", "=" * 80)
 
     return logger

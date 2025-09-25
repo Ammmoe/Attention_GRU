@@ -126,7 +126,9 @@ def plot_attention_heatmap(attention_weights, save_dir):
     plt.close()
 
 
-def plot_inference_trajectory(y_true, y_pred, agents, save_dir, filename="trajectory.png"):
+def plot_inference_trajectory(
+    y_true, y_pred, agents, save_dir, filename="trajectory.png"
+):
     """
     Plot full multi-agent 3D trajectory (ground-truth vs predicted).
 
