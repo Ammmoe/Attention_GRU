@@ -37,7 +37,7 @@ from utils.plot_generator import plot_trajectories
 
 # pylint: disable=all
 # Data settings and parameters
-DATA_TYPE = "mixed"  # Options: "zurich", "quadcopter", "mixed"
+DATA_TYPE = "zurich"  # Options: "zurich", "quadcopter", "mixed"
 AGENTS = 3  # Number of agents or drones
 LOOK_BACK = 50  # Number of past time steps to use as input
 FORWARD_LEN = 5  # Number of future time steps to predict
@@ -146,10 +146,8 @@ logger.info("Using device: %s", device)
 
 # Model, criterion, optimizer
 model_params = {
-    "input_size": X_train_tensor.shape[-1],  # features (e.g., 3 for x,y,z)
     "enc_hidden_size": 64,
     "dec_hidden_size": 64,
-    "output_size": y_train_tensor.shape[-1],  # same as features
     "num_layers": 1,
 }
 model = TrajPredictor(**model_params).to(device)
