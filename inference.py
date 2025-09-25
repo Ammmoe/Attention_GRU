@@ -3,12 +3,13 @@ import json
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-import joblib
 from sklearn.preprocessing import MinMaxScaler
+import joblib
 import os
 
 from data.trajectory_loader import load_dataset
 from models.modified_attention_bi_gru_predictor import TrajPredictor
+from utils.scaler import scale_per_agent
 
 # ----------------------------
 # Helper: plot full trajectory
@@ -76,7 +77,8 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 
 DATA_TYPE = config["DATA_TYPE"]
 # AGENTS = config["AGENTS"]
-AGENTS = 8
+AGENTS = 3
+FEATURES_PER_AGENT = 3  # x,y,z
 LOOK_BACK = config["LOOK_BACK"]
 FORWARD_LEN = config["FORWARD_LEN"]  # steps predicted at each iteration
 
@@ -108,22 +110,16 @@ total_len = traj_data.shape[0]
 # ----------------------------
 # Scale full trajectory
 # ----------------------------
-# scaler_X_path = experiment_dir / "scaler_X.pkl"
-# scaler_y_path = experiment_dir / "scaler_y.pkl"
-# scaler_X = joblib.load(scaler_X_path)
-# scaler_y = joblib.load(scaler_y_path)
-
-scaler_X = MinMaxScaler(feature_range=(0, 1))
-scaler_y = MinMaxScaler(feature_range=(0, 1))
-
-scaler_X.fit(traj_data)
-scaler_y.fit(traj_data)
+scaler_X_path = experiment_dir / "scaler_X.pkl"
+scaler_y_path = experiment_dir / "scaler_y.pkl"
+scaler_X = joblib.load(scaler_X_path)
+scaler_y = joblib.load(scaler_y_path)
 
 # ----------------------------
 # Scale input sequence
 # ----------------------------
-traj_scaled_X = scaler_X.transform(traj_data)   # for feeding into model
-traj_scaled_y = scaler_y.transform(traj_data)   # for prediction comparison
+traj_scaled_X = scale_per_agent(traj_data, scaler_X, FEATURES_PER_AGENT)   # for feeding into model
+traj_scaled_y = scale_per_agent(traj_data, scaler_y, FEATURES_PER_AGENT)   # for prediction comparison
 
 # ----------------------------
 # Predict full trajectory iteratively
@@ -150,13 +146,8 @@ y_pred_scaled = np.array(y_pred_scaled).squeeze(1)  # (timesteps, features)
 y_true_scaled = traj_scaled_y[LOOK_BACK + FORWARD_LEN - 1:]
 
 # inverse scale for plotting
-y_true = scaler_y.inverse_transform(
-    y_true_scaled.reshape(-1, y_true_scaled.shape[-1])
-).reshape(y_true_scaled.shape)
-
-y_pred = scaler_y.inverse_transform(
-    y_pred_scaled.reshape(-1, y_pred_scaled.shape[-1])
-).reshape(y_pred_scaled.shape)
+y_true = scale_per_agent(y_true_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True)
+y_pred = scale_per_agent(y_pred_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True)
 
 print("y_true shape:", y_true.shape)
 print("y_pred shape:", y_pred.shape)
