@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import seaborn as sns
-from utils.scaler import scale_per_agent
 
 
 def plot_trajectories(
@@ -50,8 +49,8 @@ def plot_trajectories(
 
     for traj_idx in plot_trajs:
         mask = traj_ids == traj_idx
-        true_traj = scale_per_agent(y_true[mask], scaler, dim, inverse=True)
-        pred_traj = scale_per_agent(y_pred[mask], scaler, dim, inverse=True)
+        true_traj = scaler.inverse_transform(y_true[mask])
+        pred_traj = scaler.inverse_transform(y_pred[mask])
 
         fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot(111, projection="3d")
