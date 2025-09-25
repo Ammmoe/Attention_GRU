@@ -67,3 +67,44 @@ def get_logger(exp_root="experiments", log_name="train.log"):
         logger.addHandler(ch)
 
     return logger, exp_dir
+
+
+def get_inference_logger(exp_dir, log_name="inference.log"):
+    """
+    Set up an inference logger that appends logs into a fixed file
+    inside an existing experiment folder.
+
+    Args:
+        exp_dir (str): Path to the existing experiment folder.
+        log_name (str, optional): Log file name. Defaults to "inference.log".
+
+    Returns:
+        logging.Logger: Configured logger object.
+    """
+
+    os.makedirs(exp_dir, exist_ok=True)
+    log_path = os.path.join(exp_dir, log_name)
+
+    # Use experiment folder name to make logger unique
+    logger = logging.getLogger(f"inference_{os.path.basename(exp_dir)}")
+    logger.setLevel(logging.INFO)
+
+    if not logger.handlers:  # avoid duplicates
+        fh = logging.FileHandler(log_path, mode="a")  # append mode
+        fh.setLevel(logging.INFO)
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+
+        # --- Write a session header ---
+        logger.info("\n")
+        logger.info("%s", "=" * 80)
+        logger.info("NEW INFERENCE SESSION - %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        logger.info("%s", "=" * 80)
+
+    return logger

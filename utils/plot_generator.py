@@ -124,3 +124,54 @@ def plot_attention_heatmap(attention_weights, save_dir):
     # Show interactively
     plt.show()
     plt.close()
+
+
+def plot_inference_trajectory(y_true, y_pred, agents, save_dir, filename="trajectory.png"):
+    """
+    Plot full multi-agent 3D trajectory (ground-truth vs predicted).
+
+    Args:
+        y_true (np.ndarray): Ground-truth scaled values, shape (timesteps, features)
+        y_pred (np.ndarray): Predicted scaled values, same shape as y_true
+        scaler (MinMaxScaler): Fitted scaler to inverse-transform data
+        agents (int): Number of agents
+        save_dir (str): Directory to save plot
+        filename (str): Name of the PNG file
+    """
+
+    dim = 3
+    colors = [plt.get_cmap("tab10")(i % 10) for i in range(agents)]
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    for agent in range(agents):
+        start = agent * dim
+        # True trajectory
+        ax.plot(
+            y_true[:, start],
+            y_true[:, start + 1],
+            y_true[:, start + 2],
+            label=f"Agent {agent + 1} True",
+            color=colors[agent],
+        )
+        # Predicted trajectory
+        ax.plot(
+            y_pred[:, start],
+            y_pred[:, start + 1],
+            y_pred[:, start + 2],
+            label=f"Agent {agent + 1} Pred",
+            color=colors[agent],
+            linestyle="--",
+        )
+
+    ax.set_title("Full Trajectory (True vs Predicted)")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_label("Z")
+    ax.legend()
+
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, filename), dpi=150)
+    plt.show()
+    plt.close()
