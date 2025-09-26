@@ -61,18 +61,18 @@ def plot_trajectories(
 
             # True trajectory
             ax.plot(
-                true_traj[:, start],
-                true_traj[:, start + 1],
-                true_traj[:, start + 2],
+                true_traj[:, -1, start],
+                true_traj[:, -1, start + 1],
+                true_traj[:, -1, start + 2],
                 label=f"Agent {agent + 1} True",
                 color=colors[agent],
             )
 
             # Predicted trajectory
             ax.plot(
-                pred_traj[:, start],
-                pred_traj[:, start + 1],
-                pred_traj[:, start + 2],
+                pred_traj[:, -1, start],
+                pred_traj[:, -1, start + 1],
+                pred_traj[:, -1, start + 2],
                 label=f"Agent {agent + 1} Pred",
                 color=colors[agent],
                 linestyle="--",
@@ -152,17 +152,17 @@ def plot_inference_trajectory(
         start = agent * dim
         # True trajectory
         ax.plot(
-            y_true[:, start],
-            y_true[:, start + 1],
-            y_true[:, start + 2],
+            y_true[:, -1, start],
+            y_true[:, -1, start + 1],
+            y_true[:, -1, start + 2],
             label=f"Agent {agent + 1} True",
             color=colors[agent],
         )
         # Predicted trajectory
         ax.plot(
-            y_pred[:, start],
-            y_pred[:, start + 1],
-            y_pred[:, start + 2],
+            y_pred[:, -1, start],
+            y_pred[:, -1, start + 1],
+            y_pred[:, -1, start + 2],
             label=f"Agent {agent + 1} Pred",
             color=colors[agent],
             linestyle="--",

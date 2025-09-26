@@ -32,7 +32,7 @@ import torch
 import joblib
 import numpy as np
 from utils.plot_generator import plot_inference_trajectory
-from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
+from utils.model_evaluator import evaluate_metrics_multi_agent_per_timestep as evaluate
 from utils.scaler import scale_per_agent
 from utils.logger import get_inference_logger
 from data.trajectory_loader import load_dataset
@@ -41,7 +41,7 @@ from data.trajectory_loader import load_dataset
 AGENTS = 6
 
 # Paths & Config
-experiment_dir = Path("experiments/20250925_181444")
+experiment_dir = Path("experiments/20250926_153553")
 CONFIG_PATH = experiment_dir / "config.json"
 MODEL_PATH = experiment_dir / "last_model.pt"
 
@@ -56,6 +56,7 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 DATA_TYPE = config["DATA_TYPE"]
 LOOK_BACK = config["LOOK_BACK"]
 FORWARD_LEN = config["FORWARD_LEN"]
+SEQUENTIAL_PREDICTION = config.get("SEQUENTIAL_PREDICTION", False)
 FEATURES_PER_AGENT = 3
 
 # Log config info
@@ -121,7 +122,12 @@ with torch.no_grad():
         )
 
         # Model prediction
-        pred = model(X_tensor).cpu().numpy()  # (1, 1, features)
+        if SEQUENTIAL_PREDICTION:
+            pred = (
+                model(X_tensor, pred_len=FORWARD_LEN).cpu().numpy()
+            )  # (1, FORWARD_LEN, features)
+        else:
+            pred = model(X_tensor, pred_len=1).cpu().numpy()  # (1, 1, features)
 
         # Append prediction
         y_pred_scaled.append(pred)
@@ -143,51 +149,95 @@ logger.info(
 y_pred_scaled = np.array(y_pred_scaled).squeeze(1)  # (timesteps, features)
 
 # Ground truth aligned (scaled with y-scaler)
-y_true_scaled = traj_scaled_y[LOOK_BACK + FORWARD_LEN - 1 :]
+# y_true_scaled = traj_scaled_y[LOOK_BACK + FORWARD_LEN - 1 :]
+y_true_scaled = []
+seq_count = total_len - LOOK_BACK - FORWARD_LEN + 1
+for i in range(seq_count):
+    if SEQUENTIAL_PREDICTION:
+        seq_y = traj_scaled_y[
+            i + LOOK_BACK : i + LOOK_BACK + FORWARD_LEN
+        ]  # shape (FORWARD_LEN, features)
+    else:
+        seq_y = traj_scaled_y[
+            i + LOOK_BACK + FORWARD_LEN - 1 : i + LOOK_BACK + FORWARD_LEN
+        ]  # (1, features)
 
-# Evaluate metrics
-mse, rmse, mae, ede, axis_mse, axis_rmse, axis_mae = evaluate(
-    torch.tensor(y_true_scaled),
-    torch.tensor(y_pred_scaled),
+    y_true_scaled.append(seq_y)
+
+y_true_scaled = np.array(y_true_scaled)  # shape: (num_sequences, FORWARD_LEN, features)
+
+print(f"traj_df shape: {traj_df.shape}, traj_data shape: {traj_data.shape}")
+print(
+    f"traj_scaled_y shape: {traj_scaled_y.shape}, y_true_scaled shape: {y_true_scaled.shape}, y_pred_scaled shape: {y_pred_scaled.shape}"
+)
+
+# Compute evaluation metrics (inverse scaling applied)
+mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t = evaluate(
+    torch.from_numpy(y_true_scaled),
+    torch.from_numpy(y_pred_scaled),
     scaler_y,
     num_agents=AGENTS,
 )
 
-mse_x, mse_y, mse_z = axis_mse
-rmse_x, rmse_y, rmse_z = axis_rmse
-mae_x, mae_y, mae_z = axis_mae
-
-# Log metrics per axis and overall
-logger.info(
-    "Test Mean Squared Error (MSE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters^2",
-    AGENTS,
-    mse_x,
-    mse_y,
-    mse_z,
+# Table header
+header = (
+    f"{'Timestep':>8} | {'EDE':>10} | {'MSE':>10} | {'RMSE':>10} | {'MAE':>10} | "
+    f"{'MSE_x':>10} {'MSE_y':>10} {'MSE_z':>10} | "
+    f"{'RMSE_x':>10} {'RMSE_y':>10} {'RMSE_z':>10} | "
+    f"{'MAE_x':>10} {'MAE_y':>10} {'MAE_z':>10}"
 )
-logger.info("Test Mean Squared Error (MSE) overall: %.6f meters^2", mse)
+logger.info("-" * len(header))
+logger.info(header)
+logger.info("-" * len(header))
 
-logger.info(
-    "Test Root Mean Squared Error (RMSE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters",
-    AGENTS,
-    rmse_x,
-    rmse_y,
-    rmse_z,
-)
-logger.info("Test Root Mean Squared Error (RMSE) overall: %.6f meters", rmse)
+# Table rows
+for t, (ede, mse, rmse, mae, axis_mse, axis_rmse, axis_mae) in enumerate(
+    zip(ede_t, mse_t, rmse_t, mae_t, axis_mse_t, axis_rmse_t, axis_mae_t)
+):
+    logger.info(
+        "%8d | %10.6f | %10.6f | %10.6f | %10.6f | "
+        "%10.6f %10.6f %10.6f | "
+        "%10.6f %10.6f %10.6f | "
+        "%10.6f %10.6f %10.6f",
+        t,
+        ede,
+        mse,
+        rmse,
+        mae,
+        axis_mse[0],
+        axis_mse[1],
+        axis_mse[2],
+        axis_rmse[0],
+        axis_rmse[1],
+        axis_rmse[2],
+        axis_mae[0],
+        axis_mae[1],
+        axis_mae[2],
+    )
 
+# Summary averages
+logger.info("-" * len(header))
 logger.info(
-    "Test Mean Absolute Error (MAE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters",
-    AGENTS,
-    mae_x,
-    mae_y,
-    mae_z,
+    "%8s | %10.6f | %10.6f | %10.6f | %10.6f | "
+    "%10.6f %10.6f %10.6f | "
+    "%10.6f %10.6f %10.6f | "
+    "%10.6f %10.6f %10.6f",
+    "Average",
+    ede_t.mean(),
+    mse_t.mean(),
+    rmse_t.mean(),
+    mae_t.mean(),
+    axis_mse_t.mean(axis=0)[0],
+    axis_mse_t.mean(axis=0)[1],
+    axis_mse_t.mean(axis=0)[2],
+    axis_rmse_t.mean(axis=0)[0],
+    axis_rmse_t.mean(axis=0)[1],
+    axis_rmse_t.mean(axis=0)[2],
+    axis_mae_t.mean(axis=0)[0],
+    axis_mae_t.mean(axis=0)[1],
+    axis_mae_t.mean(axis=0)[2],
 )
-logger.info("Test Mean Absolute Error (MAE) overall: %.6f meters", mae)
-
-logger.info(
-    "Test Euclidean Distance Error (EDE) (averaged over all agents): %.6f meters", ede
-)
+logger.info("-" * len(header))
 
 # inverse scale for plotting
 y_true = scale_per_agent(y_true_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True)

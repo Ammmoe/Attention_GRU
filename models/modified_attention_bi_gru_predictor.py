@@ -67,9 +67,4 @@ class TrajPredictor(nn.Module):
             
         # --- Concatenate all agents ---
         outputs = torch.cat(outputs_per_agent, dim=2)  # [batch, pred_len, num_agents * input_size]
-
-        # If pred_len == 1, remove the middle dimension
-        if outputs.size(1) == 1:
-            outputs = outputs.squeeze(1)  # [batch, num_agents * input_size]
-
         return outputs
