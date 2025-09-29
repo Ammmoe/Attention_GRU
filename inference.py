@@ -41,7 +41,7 @@ from utils.logger import get_inference_logger
 from data.trajectory_loader import load_dataset
 
 # Set number of drones (agents) for inference
-AGENTS = 3
+AGENTS = 8
 
 # Paths & Config
 experiment_dir = Path("experiments/20250929_110429")
@@ -110,8 +110,6 @@ scaler_y = joblib.load(scaler_y_path)
 traj_scaled_X = scale_per_agent(traj_data, scaler_X, FEATURES_PER_AGENT)
 traj_scaled_y = scale_per_agent(traj_data, scaler_y, FEATURES_PER_AGENT)
 
-print(f"traj_scaled_X shape: {traj_scaled_X.shape}, traj_scaled_y shape: {traj_scaled_y.shape}")
-
 # Predict full trajectory iteratively
 y_pred_scaled = []
 input_seq = traj_scaled_X[:LOOK_BACK].copy()  # use X-scaler for model inputs
@@ -140,7 +138,7 @@ with torch.no_grad():
         # Teacher forcing: append ground truth NEXT step (scaled with X for inputs)
         next_step = traj_scaled_X[i + LOOK_BACK]
         input_seq = np.vstack([input_seq, next_step])
-        
+
 # Log inference time
 end_time = time.time()
 total_time = end_time - start_time
@@ -170,11 +168,6 @@ for i in range(seq_count):
     y_true_scaled.append(seq_y)
 
 y_true_scaled = np.array(y_true_scaled)  # shape: (num_sequences, FORWARD_LEN, features)
-
-print(f"traj_df shape: {traj_df.shape}, traj_data shape: {traj_data.shape}")
-print(
-    f"traj_scaled_y shape: {traj_scaled_y.shape}, y_true_scaled shape: {y_true_scaled.shape}, y_pred_scaled shape: {y_pred_scaled.shape}"
-)
 
 # Compute evaluation metrics (inverse scaling applied)
 mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t = evaluate(
@@ -260,27 +253,24 @@ plot_inference_trajectory(
 # Number of sequences to visualize (e.g., 4 randomly chosen timesteps)
 NUM_PLOTS = min(1, y_true.shape[0])
 
+# Original trajectory length
+traj_len = traj_scaled_X.shape[0]
+
 # Select random indices for plotting
 plot_indices = np.random.choice(
-    np.arange(50, y_true.shape[0]),  # indices starting from 50
+    np.arange(LOOK_BACK, traj_len),  # indices starting from 50
     NUM_PLOTS,
-    replace=False
+    replace=False,
 )
-
-print(f"Plot_indices: {plot_indices}")
 
 trajectory_sets = []
 
 for idx in plot_indices:
     # For inference, "past" is the LOOK_BACK window ending at this sequence
     start_idx = max(0, idx - LOOK_BACK)
-    print("start_idx, idx:", start_idx, idx)
 
     past = traj_scaled_X[start_idx:idx]  # scaled input
-    print("past shape:", past.shape)
-
     past_orig = scale_per_agent(past, scaler_X, FEATURES_PER_AGENT, inverse=True)
-    print("past_orig shape:", past_orig.shape)
 
     true_future = y_true[idx]
     pred_future = y_pred[idx]
@@ -289,12 +279,7 @@ for idx in plot_indices:
     true_line = np.vstack([past_orig[-1:], true_future])
     pred_line = np.vstack([past_orig[-1:], pred_future])
 
-    print("true_line shape:", true_line.shape)
-    print("pred_line shape:", pred_line.shape)
-
     trajectory_sets.append((past_orig, true_line, pred_line))
-
-print(f"Trajectory_sets_length: {len(trajectory_sets)}")
 
 # Define save path
 plot_path = Path(experiment_dir) / f"inference_subplots_{traj_idx}.png"
