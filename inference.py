@@ -41,7 +41,7 @@ from utils.logger import get_inference_logger
 from data.trajectory_loader import load_dataset
 
 # Set number of drones (agents) for inference
-AGENTS = 3
+AGENTS = 4
 
 # Set number of subplots for sequential plotter
 NUM_SUBPLOTS = 1
@@ -50,7 +50,7 @@ NUM_SUBPLOTS = 1
 SEQUENTIAL_PREDICTION = True
 
 # Paths & Config
-experiment_dir = Path("experiments/20250929_161447")
+experiment_dir = Path("experiments/20250929_175458")
 CONFIG_PATH = experiment_dir / "config.json"
 MODEL_PATH = experiment_dir / "last_model.pt"
 
