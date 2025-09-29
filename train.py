@@ -24,6 +24,7 @@ import json
 import numpy as np
 import torch
 import joblib
+from pathlib import Path
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
@@ -32,14 +33,17 @@ from sklearn.model_selection import train_test_split
 from data.trajectory_loader import load_dataset
 from models.modified_attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
-from utils.model_evaluator import evaluate_metrics_multi_agent as evaluate
-from utils.plot_generator import plot_trajectories
+from utils.model_evaluator import evaluate_metrics_multi_agent_per_timestep as evaluate
+from utils.plot_generator import plot_trajectories, plot_3d_trajectories_subplots
 from utils.scaler import scale_per_agent
 
 
 # pylint: disable=all
 # Data settings and parameters
 DATA_TYPE = "zurich"  # Options: "zurich", "quadcopter", "mixed"
+SEQUENTIAL_PREDICTION = (
+    True  # If False, model predicts only the last point for FORWARD_LEN steps
+)
 AGENTS = 3  # Number of agents or drones
 LOOK_BACK = 50  # Number of past time steps to use as input
 FORWARD_LEN = 5  # Number of future time steps to predict
@@ -52,6 +56,7 @@ LEARNING_RATE = 1e-3
 
 # Plotting parameters
 NUM_PLOTS = 3  # number of plots to generate
+NUM_SUBPLOTS = 3 # number of subplots to generate
 
 # Setup logger and experiment folder
 logger, exp_dir = get_logger()
@@ -59,8 +64,11 @@ os.makedirs(exp_dir, exist_ok=True)
 
 logger.info("Experiment started")
 logger.info("Experiment folder: %s", exp_dir)
-logger.info("Dataset used: %s", DATA_TYPE)
-logger.info("Number of drones: %d", AGENTS)
+logger.info("Dataset: %s", DATA_TYPE)
+logger.info("Number of drones (agents): %d", AGENTS)
+logger.info("LOOK_BACK (past steps): %d", LOOK_BACK)
+logger.info("FORWARD_LEN (future steps): %d", FORWARD_LEN)
+logger.info("SEQUENTIAL_PREDICTION: %s", "True" if SEQUENTIAL_PREDICTION else "False")
 
 # Load DataFrame
 df = load_dataset(
@@ -83,7 +91,16 @@ for traj_idx in df["trajectory_index"].unique():
     seq_count = n_rows - LOOK_BACK - FORWARD_LEN + 1
     for i in range(seq_count):
         seq_X = traj_data[i : i + LOOK_BACK]  # shape (LOOK_BACK, features)
-        seq_y = traj_data[i + LOOK_BACK + FORWARD_LEN - 1]  # shape (features,)
+
+        # For sequential prediction, predict FORWARD_LEN steps; else just the last step
+        if SEQUENTIAL_PREDICTION:
+            seq_y = traj_data[
+                i + LOOK_BACK : i + LOOK_BACK + FORWARD_LEN
+            ]  # shape (FORWARD_LEN, features)
+        else:
+            seq_y = traj_data[
+                i + LOOK_BACK + FORWARD_LEN - 1 : i + LOOK_BACK + FORWARD_LEN
+            ]  # (1, features)
 
         X.append(seq_X)
         y.append(seq_y)
@@ -91,7 +108,9 @@ for traj_idx in df["trajectory_index"].unique():
 
 # Convert to NumPy arrays
 X = np.array(X, dtype=np.float32)  # (num_sequences, LOOK_BACK, features)
-y = np.array(y, dtype=np.float32)  # (num_sequences, features)
+y = np.array(
+    y, dtype=np.float32
+)  # (num_sequences, 1, features) or (num_sequences, FORWARD_LEN, features)
 trajectory_ids = np.array(trajectory_ids)
 
 # Split train/test
@@ -110,7 +129,6 @@ scaler_y = MinMaxScaler(feature_range=(0, 1))
 X_train_scaled = scale_per_agent(X_train, scaler_X, FEATURES_PER_AGENT, fit=True)
 X_test_scaled = scale_per_agent(X_test, scaler_X, FEATURES_PER_AGENT, fit=False)
 
-# y is already 2D
 y_train_scaled = scale_per_agent(y_train, scaler_y, FEATURES_PER_AGENT, fit=True)
 y_test_scaled = scale_per_agent(y_test, scaler_y, FEATURES_PER_AGENT, fit=False)
 
@@ -174,9 +192,14 @@ try:
         total_loss = 0.0
         for batch_x, batch_y in train_loader:
             batch_x, batch_y = batch_x.to(device), batch_y.to(device)
-
             optimizer.zero_grad()
-            pred = model(batch_x)
+
+            # Add prediction_len argument if sequential prediction
+            if SEQUENTIAL_PREDICTION:
+                pred = model(batch_x, pred_len=FORWARD_LEN)
+            else:
+                pred = model(batch_x, pred_len=1)
+
             loss = criterion(pred, batch_y)
             loss.backward()
             optimizer.step()
@@ -227,8 +250,15 @@ with torch.no_grad():
         batch_x, batch_y = batch_x.to(device), batch_y.to(device)
         total_sequences += batch_x.size(0)
 
+        # Measure inference time
         start_time = time.time()
-        outputs = model(batch_x)
+
+        # Add prediction_len argument if sequential prediction
+        if SEQUENTIAL_PREDICTION:
+            outputs = model(batch_x, pred_len=FORWARD_LEN)
+        else:
+            outputs = model(batch_x, pred_len=1)
+
         end_time = time.time()
 
         # Record inference time per batch
@@ -260,45 +290,69 @@ y_pred = torch.cat(all_preds, dim=0)
 y_true = torch.cat(all_trues, dim=0)
 
 # Compute evaluation metrics (inverse scaling applied)
-mse, rmse, mae, ede, axis_mse, axis_rmse, axis_mae = evaluate(
+mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t = evaluate(
     y_true, y_pred, scaler_y, num_agents=AGENTS
 )
 
-mse_x, mse_y, mse_z = axis_mse
-rmse_x, rmse_y, rmse_z = axis_rmse
-mae_x, mae_y, mae_z = axis_mae
-
-# Log metrics per axis and overall
-logger.info(
-    "Test Mean Squared Error (MSE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters^2",
-    AGENTS,
-    mse_x,
-    mse_y,
-    mse_z,
+# Table header
+header = (
+    f"{'Timestep':>8} | {'EDE':>10} | {'MSE':>10} | {'RMSE':>10} | {'MAE':>10} | "
+    f"{'MSE_x':>10} {'MSE_y':>10} {'MSE_z':>10} | "
+    f"{'RMSE_x':>10} {'RMSE_y':>10} {'RMSE_z':>10} | "
+    f"{'MAE_x':>10} {'MAE_y':>10} {'MAE_z':>10}"
 )
-logger.info("Test Mean Squared Error (MSE) overall: %.6f meters^2", mse)
+logger.info("-" * len(header))
+logger.info(header)
+logger.info("-" * len(header))
 
-logger.info(
-    "Test Root Mean Squared Error (RMSE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters",
-    AGENTS,
-    rmse_x,
-    rmse_y,
-    rmse_z,
-)
-logger.info("Test Root Mean Squared Error (RMSE) overall: %.6f meters", rmse)
+# Table rows
+for t, (ede, mse, rmse, mae, axis_mse, axis_rmse, axis_mae) in enumerate(
+    zip(ede_t, mse_t, rmse_t, mae_t, axis_mse_t, axis_rmse_t, axis_mae_t)
+):
+    logger.info(
+        "%8d | %10.6f | %10.6f | %10.6f | %10.6f | "
+        "%10.6f %10.6f %10.6f | "
+        "%10.6f %10.6f %10.6f | "
+        "%10.6f %10.6f %10.6f",
+        t,
+        ede,
+        mse,
+        rmse,
+        mae,
+        axis_mse[0],
+        axis_mse[1],
+        axis_mse[2],
+        axis_rmse[0],
+        axis_rmse[1],
+        axis_rmse[2],
+        axis_mae[0],
+        axis_mae[1],
+        axis_mae[2],
+    )
 
+# Summary averages
+logger.info("-" * len(header))
 logger.info(
-    "Test Mean Absolute Error (MAE) per axis (averaged over %d agents): x=%.6f, y=%.6f, z=%.6f meters",
-    AGENTS,
-    mae_x,
-    mae_y,
-    mae_z,
+    "%8s | %10.6f | %10.6f | %10.6f | %10.6f | "
+    "%10.6f %10.6f %10.6f | "
+    "%10.6f %10.6f %10.6f | "
+    "%10.6f %10.6f %10.6f",
+    "Average",
+    ede_t.mean(),
+    mse_t.mean(),
+    rmse_t.mean(),
+    mae_t.mean(),
+    axis_mse_t.mean(axis=0)[0],
+    axis_mse_t.mean(axis=0)[1],
+    axis_mse_t.mean(axis=0)[2],
+    axis_rmse_t.mean(axis=0)[0],
+    axis_rmse_t.mean(axis=0)[1],
+    axis_rmse_t.mean(axis=0)[2],
+    axis_mae_t.mean(axis=0)[0],
+    axis_mae_t.mean(axis=0)[1],
+    axis_mae_t.mean(axis=0)[2],
 )
-logger.info("Test Mean Absolute Error (MAE) overall: %.6f meters", mae)
-
-logger.info(
-    "Test Euclidean Distance Error (EDE) (averaged over all agents): %.6f meters", ede
-)
+logger.info("-" * len(header))
 
 # Save config / hyperparameters
 config = {
@@ -308,8 +362,10 @@ config = {
     "model_params": model_params,
     "DATA_TYPE": DATA_TYPE,
     "AGENTS": AGENTS,
+    "FEATURES_PER_AGENT": FEATURES_PER_AGENT,
     "LOOK_BACK": LOOK_BACK,
     "FORWARD_LEN": FORWARD_LEN,
+    "SEQUENTIAL_PREDICTION": SEQUENTIAL_PREDICTION,
     "EPOCHS": EPOCHS,
     "BATCH_SIZE": BATCH_SIZE,
     "LEARNING_RATE": LEARNING_RATE,
@@ -340,3 +396,41 @@ plot_trajectories(
     agents=AGENTS,
     save_dir=exp_dir,
 )
+
+# Stack all past inputs (for context)
+past_inputs = torch.cat(
+    [b for b, _ in test_loader], dim=0
+).numpy()  # (num_sequences, LOOK_BACK, num_features)
+
+# Ensure NUM_PLOTS does not exceed number of sequences
+num_sequences = y_true.shape[0]
+NUM_SUBPLOTS = min(NUM_SUBPLOTS, num_sequences)
+
+# Randomly select sequence indices for plotting
+plot_indices = np.random.choice(num_sequences, size=NUM_SUBPLOTS, replace=False)
+
+trajectory_sets = []
+
+for seq_idx in plot_indices:
+    past = past_inputs[seq_idx]  # shape: (LOOK_BACK, features)
+    true_future = y_true[seq_idx]  # shape: (seq_len, features)
+    pred_future = y_pred[seq_idx]  # shape: (seq_len, features)
+
+    # Inverse scale past and future
+    past_orig = scale_per_agent(past, scaler_X, FEATURES_PER_AGENT, inverse=True)
+    true_future_orig = scale_per_agent(
+        true_future, scaler_y, FEATURES_PER_AGENT, inverse=True
+    )
+    pred_future_orig = scale_per_agent(
+        pred_future, scaler_y, FEATURES_PER_AGENT, inverse=True
+    )
+
+    # Concatenate last past point with future to make continuous lines
+    true_line = np.vstack([past_orig[-1:], true_future_orig])
+    pred_line = np.vstack([past_orig[-1:], pred_future_orig])
+
+    trajectory_sets.append((past_orig, true_line, pred_line))
+
+# Create subplots for selected sequences
+plot_path = Path(exp_dir) / "training_subplots.png"
+plot_3d_trajectories_subplots(trajectory_sets, save_path=str(plot_path))

@@ -41,10 +41,16 @@ from utils.logger import get_inference_logger
 from data.trajectory_loader import load_dataset
 
 # Set number of drones (agents) for inference
-AGENTS = 8
+AGENTS = 3
+
+# Set number of subplots for sequential plotter
+NUM_SUBPLOTS = 1
+
+# Predict in sequence or in single coordinate points
+SEQUENTIAL_PREDICTION = True
 
 # Paths & Config
-experiment_dir = Path("experiments/20250929_110429")
+experiment_dir = Path("experiments/20250929_161447")
 CONFIG_PATH = experiment_dir / "config.json"
 MODEL_PATH = experiment_dir / "last_model.pt"
 
@@ -59,7 +65,6 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 DATA_TYPE = config["DATA_TYPE"]
 LOOK_BACK = config["LOOK_BACK"]
 FORWARD_LEN = config["FORWARD_LEN"]
-SEQUENTIAL_PREDICTION = config.get("SEQUENTIAL_PREDICTION", False)
 FEATURES_PER_AGENT = 3
 
 # Log config info
@@ -177,6 +182,7 @@ mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t = evaluate(
     num_agents=AGENTS,
 )
 
+# pylint: disable=invalid-name
 # Table header
 header = (
     f"{'Timestep':>8} | {'EDE':>10} | {'MSE':>10} | {'RMSE':>10} | {'MAE':>10} | "
@@ -251,15 +257,12 @@ plot_inference_trajectory(
 )
 
 # Number of sequences to visualize (e.g., 4 randomly chosen timesteps)
-NUM_PLOTS = min(1, y_true.shape[0])
-
-# Original trajectory length
-traj_len = traj_scaled_X.shape[0]
+NUM_SUBPLOTS = min(NUM_SUBPLOTS, y_true.shape[0])
 
 # Select random indices for plotting
 plot_indices = np.random.choice(
-    np.arange(LOOK_BACK, traj_len),  # indices starting from 50
-    NUM_PLOTS,
+    np.arange(LOOK_BACK, y_true.shape[0]),  # indices starting from 50
+    NUM_SUBPLOTS,
     replace=False,
 )
 
@@ -281,8 +284,11 @@ for idx in plot_indices:
 
     trajectory_sets.append((past_orig, true_line, pred_line))
 
+# Generate short timestamp for filenames
+timestamp = time.strftime("%H%M%S")
+
 # Define save path
-plot_path = Path(experiment_dir) / f"inference_subplots_{traj_idx}.png"
+plot_path = Path(experiment_dir) / f"inference_subplots_{traj_idx}_{timestamp}.png"
 
 # Use the same plotting function as in train.py
 plot_3d_trajectories_subplots(

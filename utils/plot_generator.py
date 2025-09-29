@@ -11,7 +11,7 @@ save plots as PNG files while optionally displaying them interactively.
 
 import os
 import math
-from typing import List, Tuple, Optional
+from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -88,7 +88,7 @@ def plot_trajectories(
 
         # Save PNG
         os.makedirs(save_dir, exist_ok=True)
-        plot_path = os.path.join(save_dir, f"trajectory_{traj_idx}.png")
+        plot_path = os.path.join(save_dir, f"training_trajectory_{traj_idx}.png")
         plt.savefig(plot_path, dpi=150)
 
         # Show interactively
@@ -194,8 +194,38 @@ def plot_3d_trajectories_subplots(
 ) -> None:
     """
     Plot multiple 3D trajectory sets as subplots.
-    Each row in past/true/pred should have concatenated agent features.
+
+    Each element in `trajectory_sets` should be a tuple of three numpy arrays:
+        - past: Past trajectory points (shape [seq_len, num_agents * num_features])
+        - true_line: True future trajectory points (shape [pred_len, num_agents * num_features])
+        - pred_line: Predicted future trajectory points (shape [pred_len, num_agents * num_features])
+
+    Parameters
+    ----------
+    trajectory_sets : list of tuple[np.ndarray, np.ndarray, np.ndarray]
+        List of trajectory sets to plot.
+    labels : list[str], optional
+        Labels for past, true, and predicted trajectories, by default ["Past", "True", "Predicted"]
+    colors : list[str], optional
+        Colors for past, true, and predicted trajectories, by default ["b", "g", "r"]
+    title : str, optional
+        Overall title for the figure, by default "3D Trajectory Predictions (Random Examples)"
+    figsize : tuple, optional
+        Figure size, by default (15, 10)
+    save_path : str, optional
+        File path to save the figure. If None, the figure is not saved.
+    per_agent : bool, optional
+        Whether to plot trajectories for all agents or only the first agent, by default False
+    num_features : int, optional
+        Number of features per agent (usually 3 for x, y, z), by default 3
+
+    Notes
+    -----
+    - Each row in the input arrays should concatenate all agent features.
+    - The function automatically connects the last past point to the first future point.
+    - Legend labels are only applied to the first agent to avoid clutter.
     """
+
     num_plots = len(trajectory_sets)
     cols = math.ceil(math.sqrt(num_plots))
     rows = math.ceil(num_plots / cols)
@@ -254,7 +284,7 @@ def plot_3d_trajectories_subplots(
                 true_agent[0, 2],
                 c=past_color,
                 marker="o",
-                s=10,
+                s=10,  # type: ignore[reportCallIssue]
             )
             if true_agent.shape[0] > 1:
                 ax.plot(
@@ -280,7 +310,7 @@ def plot_3d_trajectories_subplots(
                 pred_agent[0, 2],
                 c=past_color,
                 marker="o",
-                s=10,
+                s=10,  # type: ignore[reportCallIssue]
             )
             if pred_agent.shape[0] > 1:
                 ax.plot(
