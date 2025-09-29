@@ -10,6 +10,8 @@ save plots as PNG files while optionally displaying them interactively.
 """
 
 import os
+import math
+from typing import List, Tuple, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -176,5 +178,130 @@ def plot_inference_trajectory(
 
     os.makedirs(save_dir, exist_ok=True)
     plt.savefig(os.path.join(save_dir, filename), dpi=150)
+    plt.show()
+    plt.close()
+
+
+def plot_3d_trajectories_subplots(
+    trajectory_sets: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    labels: Optional[list[str]] = None,
+    colors: Optional[list[str]] = None,
+    title: str = "3D Trajectory Predictions (Random Examples)",
+    figsize: tuple = (15, 10),
+    save_path: Optional[str] = None,
+    per_agent: bool = False,  # plot all agents or just first agent
+    num_features: int = 3,  # usually 3 for x,y,z
+) -> None:
+    """
+    Plot multiple 3D trajectory sets as subplots.
+    Each row in past/true/pred should have concatenated agent features.
+    """
+    num_plots = len(trajectory_sets)
+    cols = math.ceil(math.sqrt(num_plots))
+    rows = math.ceil(num_plots / cols)
+    fig = plt.figure(figsize=figsize)
+
+    for i, (past, true_line, pred_line) in enumerate(trajectory_sets, 1):
+        ax = fig.add_subplot(rows, cols, i, projection="3d")
+
+        # Determine number of agents
+        num_agents = past.shape[1] // num_features
+
+        # Decide which agents to plot
+        agents_to_plot = range(num_agents) if per_agent else [0]
+
+        for agent_idx in agents_to_plot:
+            # reshape trajectories to [seq_len, num_agents, 3] then select agent
+            past_agent = past[
+                :, agent_idx * num_features : (agent_idx + 1) * num_features
+            ]
+            true_agent = true_line[
+                :, agent_idx * num_features : (agent_idx + 1) * num_features
+            ]
+            pred_agent = pred_line[
+                :, agent_idx * num_features : (agent_idx + 1) * num_features
+            ]
+
+            # Colors and labels
+            past_color = colors[0] if colors else "b"
+            true_color = colors[1] if colors else "g"
+            pred_color = colors[2] if colors else "r"
+            past_label = labels[0] if labels else "Past"
+            true_label = labels[1] if labels else "True"
+            pred_label = labels[2] if labels else "Predicted"
+
+            # Plot past trajectory
+            ax.plot(
+                past_agent[:, 0],
+                past_agent[:, 1],
+                past_agent[:, 2],
+                f"{past_color}-",
+                marker="o",
+                markersize=2,
+                label=past_label if agent_idx == 0 else None,
+            )
+
+            # True future
+            ax.plot(
+                [past_agent[-1, 0], true_agent[0, 0]],
+                [past_agent[-1, 1], true_agent[0, 1]],
+                [past_agent[-1, 2], true_agent[0, 2]],
+                color=past_color,
+            )
+            ax.scatter(
+                true_agent[0, 0],
+                true_agent[0, 1],
+                true_agent[0, 2],
+                c=past_color,
+                marker="o",
+                s=10,
+            )
+            if true_agent.shape[0] > 1:
+                ax.plot(
+                    true_agent[:, 0],
+                    true_agent[:, 1],
+                    true_agent[:, 2],
+                    f"{true_color}-",
+                    marker="o",
+                    markersize=2,
+                    label=true_label if agent_idx == 0 else None,
+                )
+
+            # Predicted future
+            ax.plot(
+                [past_agent[-1, 0], pred_agent[0, 0]],
+                [past_agent[-1, 1], pred_agent[0, 1]],
+                [past_agent[-1, 2], pred_agent[0, 2]],
+                color=past_color,
+            )
+            ax.scatter(
+                pred_agent[0, 0],
+                pred_agent[0, 1],
+                pred_agent[0, 2],
+                c=past_color,
+                marker="o",
+                s=10,
+            )
+            if pred_agent.shape[0] > 1:
+                ax.plot(
+                    pred_agent[:, 0],
+                    pred_agent[:, 1],
+                    pred_agent[:, 2],
+                    f"{pred_color}-",
+                    marker="o",
+                    markersize=2,
+                    label=pred_label if agent_idx == 0 else None,
+                )
+
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")  # type: ignore
+        ax.set_title(f"Sequence {i}")
+        ax.legend()
+
+    plt.suptitle(title)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
     plt.show()
     plt.close()
