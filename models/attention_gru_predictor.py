@@ -120,7 +120,7 @@ class TrajPredictor(nn.Module):
                 context, _ = self.attention(hidden_dec[-1], enc_output)
 
                 # GRU input = [batch, 1, input_size + enc_hidden_size]
-                rnn_input = torch.cat((dec_input, context), dim=2)
+                rnn_input = torch.cat((dec_input, context.unsqueeze(1)), dim=2)
                 dec_out, hidden_dec = self.decoder(rnn_input, hidden_dec)
 
                 # Project to output

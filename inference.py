@@ -50,7 +50,7 @@ NUM_SUBPLOTS = 1
 SEQUENTIAL_PREDICTION = True
 
 # Paths & Config
-experiment_dir = Path("experiments/20250930_134837")
+experiment_dir = Path("experiments/20250930_182952")
 CONFIG_PATH = experiment_dir / "config.json"
 MODEL_PATH = experiment_dir / "last_model.pt"
 

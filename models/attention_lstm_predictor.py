@@ -145,7 +145,7 @@ class TrajPredictor(nn.Module):
                 context, _ = self.attention(h[-1], enc_outputs)
 
                 # Decoder step
-                rnn_input = torch.cat((dec_input, context), dim=2)
+                rnn_input = torch.cat((dec_input, context.unsqueeze(1)), dim=2)
                 out, (h, c) = self.decoder(rnn_input, (h, c))
 
                 pred = self.fc(out.squeeze(1))
