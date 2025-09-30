@@ -77,7 +77,7 @@ class TrajPredictor(nn.Module):
         super(TrajPredictor, self).__init__()
         self.encoder = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
         self.decoder = nn.GRU(
-            output_size + hidden_size, hidden_size, num_layers, batch_first=True
+            input_size + hidden_size, hidden_size, num_layers, batch_first=True
         )
         self.attention = Attention(hidden_size)
         self.fc = nn.Linear(hidden_size, output_size)
@@ -117,8 +117,7 @@ class TrajPredictor(nn.Module):
             agent_outputs = []
             for t in range(pred_len):
                 # Attention: [batch, 1, enc_hidden_size]
-                attn_weights = self.attention(hidden_dec[-1], enc_output)
-                context = torch.bmm(attn_weights.unsqueeze(1), enc_output)
+                context, _ = self.attention(hidden_dec[-1], enc_output)
 
                 # GRU input = [batch, 1, input_size + enc_hidden_size]
                 rnn_input = torch.cat((dec_input, context), dim=2)
