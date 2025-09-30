@@ -1,15 +1,18 @@
 """
 attention_lstm_predictor.py
 
-Defines a sequence-to-sequence LSTM model with attention for predicting future 3D or 2D trajectories.
+Sequence-to-sequence LSTM model with Bahdanau-style attention for multi-agent
+trajectory prediction in 2D or 3D space.
 
-The model uses an encoder-decoder architecture with attention:
-- The encoder LSTM processes past trajectory points and outputs hidden states.
-- The attention mechanism computes context vectors from encoder hidden states at each step.
-- The decoder LSTM predicts future trajectory points autoregressively with attention.
-- A fully connected layer maps hidden states to output coordinates.
+This module provides:
 
-Suitable for trajectory prediction tasks in robotics, UAVs, and motion modeling.
+- Attention: Additive attention mechanism to compute context vectors from encoder outputs.
+- TrajPredictor: LSTM-based encoder-decoder model with attention, supporting
+    variable numbers of agents and optional teacher forcing during decoding.
+
+Example usage:
+    model = TrajPredictor(input_size=3, hidden_size=64, output_size=3)
+    preds = model(src_tensor, tgt=tgt_tensor, pred_len=10)
 """
 
 import torch
@@ -18,7 +21,15 @@ import torch.nn.functional as F
 
 
 class Attention(nn.Module):
-    """Additive (Bahdanau-style) attention mechanism."""
+    """
+    Bahdanau-style additive attention mechanism.
+
+    Computes a context vector as a weighted sum of encoder outputs, where
+    weights are computed from the current decoder hidden state.
+
+    Args:
+        hidden_size (int): Dimensionality of encoder/decoder hidden states.
+    """
 
     def __init__(self, hidden_size):
         super().__init__()
@@ -27,13 +38,19 @@ class Attention(nn.Module):
 
     def forward(self, decoder_hidden, encoder_outputs):
         """
+        Forward pass for computing attention.
+
         Args:
-            decoder_hidden: (batch, hidden_size) current decoder hidden state (h_t from LSTM)
-            encoder_outputs: (batch, seq_len, hidden_size) all encoder outputs
+            decoder_hidden (torch.Tensor): Current decoder hidden state,
+                shape (batch, hidden_size).
+            encoder_outputs (torch.Tensor): Encoder outputs for all time steps,
+                shape (batch, seq_len, hidden_size).
 
         Returns:
-            context: (batch, hidden_size) weighted sum of encoder outputs
-            attn_weights: (batch, seq_len) attention weights
+            context (torch.Tensor): Context vector computed as weighted sum of
+                encoder outputs, shape (batch, hidden_size).
+            attn_weights (torch.Tensor): Attention weights over encoder outputs,
+                shape (batch, seq_len).
         """
         _, seq_len, _ = encoder_outputs.size()
 
@@ -41,14 +58,18 @@ class Attention(nn.Module):
         decoder_hidden = decoder_hidden.unsqueeze(1).repeat(1, seq_len, 1)
 
         # Concatenate and compute energy scores
-        energy = torch.tanh(self.attn(torch.cat((decoder_hidden, encoder_outputs), dim=2)))
+        energy = torch.tanh(
+            self.attn(torch.cat((decoder_hidden, encoder_outputs), dim=2))
+        )
         attn_scores = self.v(energy).squeeze(-1)  # (batch, seq_len)
 
         # Softmax to get attention weights
         attn_weights = F.softmax(attn_scores, dim=1)
 
         # Weighted sum (context vector)
-        context = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs)  # (batch, 1, hidden_size)
+        context = torch.bmm(
+            attn_weights.unsqueeze(1), encoder_outputs
+        )  # (batch, 1, hidden_size)
         context = context.squeeze(1)
 
         return context, attn_weights
@@ -56,60 +77,87 @@ class Attention(nn.Module):
 
 class TrajPredictor(nn.Module):
     """
-    Sequence-to-sequence LSTM model with attention for trajectory prediction.
+    Sequence-to-sequence LSTM model with attention for multi-agent trajectory prediction.
+
+    Supports:
+        - Variable number of agents (multi-agent predictions).
+        - Autoregressive decoding.
+        - Optional teacher forcing using target future trajectories.
 
     Args:
         input_size (int): Number of input features per timestep (e.g., 2 for x,y or 3 for x,y,z).
         hidden_size (int): Number of hidden units in the LSTM layers.
         output_size (int): Number of output features per timestep.
-        num_layers (int): Number of stacked LSTM layers for both encoder and decoder.
+        num_layers (int): Number of stacked LSTM layers for encoder and decoder.
     """
 
     def __init__(self, input_size=3, hidden_size=64, output_size=3, num_layers=1):
         super().__init__()
+        self.input_size = input_size
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.decoder = nn.LSTM(output_size + hidden_size, hidden_size, num_layers, batch_first=True)
+        self.decoder = nn.LSTM(
+            output_size + hidden_size, hidden_size, num_layers, batch_first=True
+        )
+        self.output_size = output_size
         self.attention = Attention(hidden_size)
         self.fc = nn.Linear(hidden_size, output_size)
         self.hidden_size = hidden_size
         self.num_layers = num_layers
 
-    def forward(self, x, pred_len=1):
+    def forward(self, src, tgt=None, pred_len=1):
         """
+        Forward pass for multi-agent trajectory prediction.
+
         Args:
-            x (torch.Tensor): Input past trajectory of shape (batch, LOOK_BACK, input_size).
-            pred_len (int): Number of future timesteps to predict.
+            src (torch.Tensor): Past trajectories for all agents,
+                shape (batch, seq_len, num_agents * input_size).
+            tgt (torch.Tensor, optional): Ground truth future trajectories for
+                teacher forcing, shape (batch, pred_len, num_agents * output_size).
+            pred_len (int): Number of steps to predict if `tgt` is not provided.
 
         Returns:
-            torch.Tensor: Predicted future trajectory.
-                - Shape (batch, pred_len, output_size) if pred_len > 1
-                - Shape (batch, output_size) if pred_len == 1
+            torch.Tensor: Predicted trajectories for all agents,
+                shape (batch, pred_len, num_agents * output_size).
         """
-        # ---- Encoder ----
-        encoder_outputs, (hidden, cell) = self.encoder(x)
+        _, _, total_features = src.size()
+        num_agents = total_features // self.input_size
+        src_agents = torch.split(src, self.input_size, dim=2)
 
-        # ---- Decoder initial input = last input point ----
-        decoder_input = x[:, -1:, :]  # (batch, 1, input_size)
+        tgt_agents = None
+        if tgt is not None:
+            tgt_agents = torch.split(tgt, self.output_size, dim=2)
 
-        outputs = []
-        for _ in range(pred_len):
-            # Attention (use last hidden state of top decoder layer)
-            dec_hidden_t = hidden[-1]  # (batch, hidden_size)
-            context, _ = self.attention(dec_hidden_t, encoder_outputs)
+        outputs_per_agent = []
 
-            # Combine decoder input + context
-            dec_input = torch.cat([decoder_input.squeeze(1), context], dim=1)
-            dec_input = dec_input.unsqueeze(1)  # (batch, 1, input_size+hidden_size)
+        for agent_idx in range(num_agents):
+            # ---- Encoder ----
+            enc_outputs, (h, c) = self.encoder(src_agents[agent_idx])
 
-            # ---- Decoder step ----
-            out, (hidden, cell) = self.decoder(dec_input, (hidden, cell))
-            pred = self.fc(out)  # (batch, 1, output_size)
+            # expand to match decoder num_layers
+            h = h.repeat(self.num_layers, 1, 1)
+            c = c.repeat(self.num_layers, 1, 1)
 
-            outputs.append(pred)
-            decoder_input = pred  # autoregressive feedback
+            dec_input = src_agents[agent_idx][:, -1:, :]  # last input step
+            agent_outputs = []
 
-        outputs = torch.cat(outputs, dim=1)
+            for t in range(pred_len):
+                # Attention
+                context, _ = self.attention(h[-1], enc_outputs)
 
-        if pred_len == 1:
-            return outputs.squeeze(1)
+                # Decoder step
+                rnn_input = torch.cat((dec_input, context), dim=2)
+                out, (h, c) = self.decoder(rnn_input, (h, c))
+
+                pred = self.fc(out.squeeze(1))
+                agent_outputs.append(pred.unsqueeze(1))
+
+                # Teacher forcing / autoregressive
+                if tgt_agents is not None:
+                    dec_input = tgt_agents[agent_idx][:, t : t + 1, :]
+                else:
+                    dec_input = pred.unsqueeze(1)
+
+            outputs_per_agent.append(torch.cat(agent_outputs, dim=1))
+
+        outputs = torch.cat(outputs_per_agent, dim=2)
         return outputs
