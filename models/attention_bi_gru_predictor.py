@@ -103,6 +103,8 @@ class TrajPredictor(nn.Module):
         _, _, total_features = src.size()
         num_agents = total_features // self.input_size
         src_agents = torch.split(src, self.input_size, dim=2)
+        
+        tgt_agents = None
         if tgt is not None:
             tgt_agents = torch.split(tgt, self.input_size, dim=2)
 
@@ -130,8 +132,8 @@ class TrajPredictor(nn.Module):
                 dec_out, hidden_dec = self.decoder(rnn_input, hidden_dec)
                 pred = self.fc_out(dec_out.squeeze(1))
                 agent_outputs.append(pred.unsqueeze(1))
-                if tgt is not None:
-                    dec_input = tgt_agents[agent_idx][:, t : t + 1, :]  # type: ignore
+                if tgt_agents is not None:
+                    dec_input = tgt_agents[agent_idx][:, t : t + 1, :]
                 else:
                     dec_input = pred.unsqueeze(1)
 

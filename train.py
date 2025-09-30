@@ -31,7 +31,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 from data.trajectory_loader import load_dataset
-from models.modified_attention_bi_gru_predictor import TrajPredictor
+from models.attention_bi_gru_predictor import TrajPredictor
 from utils.logger import get_logger
 from utils.model_evaluator import evaluate_metrics_multi_agent_per_timestep as evaluate
 from utils.plot_generator import plot_trajectories, plot_3d_trajectories_subplots

@@ -1,8 +1,9 @@
 """
 attention_bi_lstm_predictor.py
 
-Defines a sequence-to-sequence LSTM model with attention for predicting future 3D or 2D trajectories.
-Supports bidirectional encoder and flexible autoregressive decoding.
+Defines a sequence-to-sequence bi-directional LSTM model with attention for predicting
+future 2D/3D trajectories of a variable number of agents.
+Supports flexible autoregressive decoding with or without teacher forcing.
 """
 
 import torch
@@ -32,20 +33,27 @@ class Attention(nn.Module):
         return torch.softmax(attention, dim=1)
 
 
-class TrajPredictor(nn.Module):
+class MultiAgentTrajPredictor(nn.Module):
     """
-    Seq2Seq LSTM with attention for trajectory prediction.
+    Seq2Seq bi-directional LSTM with attention for multi-agent trajectory prediction.
+
+    Args:
+        input_size (int): number of features per agent (2 or 3 for x,y,z).
+        enc_hidden_size (int): hidden size of encoder LSTM.
+        dec_hidden_size (int): hidden size of decoder LSTM.
+        num_layers (int): number of stacked LSTM layers.
     """
 
     def __init__(
-        self,
-        input_size=3,
-        enc_hidden_size=64,
-        dec_hidden_size=64,
-        output_size=3,
-        num_layers=1,
+        self, input_size=3, enc_hidden_size=64, dec_hidden_size=64, num_layers=1
     ):
         super().__init__()
+        self.input_size = input_size
+        self.enc_hidden_size = enc_hidden_size
+        self.dec_hidden_size = dec_hidden_size
+        self.num_layers = num_layers
+
+        # Shared encoder/decoder across agents
         self.encoder = nn.LSTM(
             input_size,
             enc_hidden_size,
@@ -60,66 +68,73 @@ class TrajPredictor(nn.Module):
             num_layers,
             batch_first=True,
         )
-        self.fc_out = nn.Linear(dec_hidden_size, output_size)
+        self.fc_out = nn.Linear(dec_hidden_size, input_size)
 
-        self.enc_hidden_size = enc_hidden_size
-        self.dec_hidden_size = dec_hidden_size
-        self.num_layers = num_layers
-
-        # projection if encoder hidden size != decoder hidden size
+        # Projection if encoder hidden size != decoder hidden size
         self.hidden_proj = nn.Linear(enc_hidden_size * 2, dec_hidden_size)
 
     def forward(self, src, tgt=None, pred_len=1):
         """
         Args:
-            src: [batch, src_len, input_size]
-            tgt: [batch, tgt_len, input_size] (optional, for teacher forcing)
+            src: [batch, look_back, num_agents * input_size]
+            tgt: [batch, pred_len, num_agents * input_size] (optional, for teacher forcing)
             pred_len: number of steps if tgt is None
         Returns:
-            outputs: [batch, pred_len, output_size]
+            outputs: [batch, pred_len, num_agents * input_size]
         """
-        # ---- Encoder ----
-        enc_outputs, (h, c) = self.encoder(src)
+        _, _, total_features = src.size()
+        num_agents = total_features // self.input_size
+        src_agents = torch.split(src, self.input_size, dim=2)
 
-        # concat last forward and backward states
-        h = torch.cat([h[-2], h[-1]], dim=1)  # (batch, enc_hidden*2)
-        c = torch.cat([c[-2], c[-1]], dim=1)
-
-        # project to decoder size
-        h = self.hidden_proj(h).unsqueeze(0)  # (1, batch, dec_hidden)
-        c = self.hidden_proj(c).unsqueeze(0)  # (1, batch, dec_hidden)
-
-        # expand to match decoder num_layers
-        h = h.repeat(self.num_layers, 1, 1)  # (num_layers, batch, dec_hidden)
-        c = c.repeat(self.num_layers, 1, 1)  # (num_layers, batch, dec_hidden)
-
+        tgt_agents = None
         if tgt is not None:
-            pred_len = tgt.size(1)
-        elif pred_len is None:
-            raise ValueError("Either tgt or pred_len must be provided")
+            tgt_agents = torch.split(tgt, self.input_size, dim=2)
 
-        outputs = []
-        dec_input = src[:, -1:, :]  # last src point
+        outputs_per_agent = []
 
-        for t in range(pred_len):
-            # Attention (only on hidden state h[-1])
-            attn_weights = self.attention(h[-1], enc_outputs)
-            context = torch.bmm(attn_weights.unsqueeze(1), enc_outputs)
+        # Loop over agents
+        for agent_idx in range(num_agents):
+            # ---- Encoder ----
+            enc_outputs, (h, c) = self.encoder(src_agents[agent_idx])
 
-            # LSTM decoder step
-            rnn_input = torch.cat((dec_input, context), dim=2)
-            output, (h, c) = self.decoder(rnn_input, (h, c))
+            # concat last forward and backward states
+            h = torch.cat([h[-2], h[-1]], dim=1)  # (batch, enc_hidden*2)
+            c = torch.cat([c[-2], c[-1]], dim=1)
 
-            pred = self.fc_out(output.squeeze(1))
-            outputs.append(pred.unsqueeze(1))
+            # project to decoder size
+            h = self.hidden_proj(h).unsqueeze(0)  # (1, batch, dec_hidden)
+            c = self.hidden_proj(c).unsqueeze(0)  # (1, batch, dec_hidden)
 
-            # Next input
-            if tgt is not None:
-                dec_input = tgt[:, t : t + 1, :]
-            else:
-                dec_input = pred.unsqueeze(1)
+            # expand to match decoder num_layers
+            h = h.repeat(self.num_layers, 1, 1)
+            c = c.repeat(self.num_layers, 1, 1)
 
-        outputs = torch.cat(outputs, dim=1)
-        if pred_len == 1:
-            return outputs.squeeze(1)
+            dec_input = src_agents[agent_idx][:, -1:, :]  # last observed point
+            agent_outputs = []
+
+            for t in range(pred_len):
+                # Attention
+                attn_weights = self.attention(h[-1], enc_outputs)
+                context = torch.bmm(attn_weights.unsqueeze(1), enc_outputs)
+
+                # Decoder step
+                rnn_input = torch.cat((dec_input, context), dim=2)
+                output, (h, c) = self.decoder(rnn_input, (h, c))
+
+                pred = self.fc_out(output.squeeze(1))
+                agent_outputs.append(pred.unsqueeze(1))
+
+                # Next input
+                if tgt_agents is not None:
+                    dec_input = tgt_agents[agent_idx][:, t : t + 1, :]
+                else:
+                    dec_input = pred.unsqueeze(1)
+
+            outputs_per_agent.append(torch.cat(agent_outputs, dim=1))
+
+        # Concatenate agent outputs along feature dimension
+        outputs = torch.cat(
+            outputs_per_agent, dim=2
+        )  # (batch, pred_len, num_agents * input_size)
+
         return outputs
