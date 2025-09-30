@@ -103,7 +103,7 @@ class TrajPredictor(nn.Module):
         _, _, total_features = src.size()
         num_agents = total_features // self.input_size
         src_agents = torch.split(src, self.input_size, dim=2)
-        
+
         tgt_agents = None
         if tgt is not None:
             tgt_agents = torch.split(tgt, self.input_size, dim=2)

@@ -1,15 +1,14 @@
 """
-_attention_gru_predictor.py
+attention_gru_predictor.py
 
-Defines a sequence-to-sequence GRU model with attention for predicting future 3D or 2D trajectories.
+Seq2Seq GRU with attention for 2D/3D multi-agent trajectory prediction.
 
-The model uses an encoder-decoder architecture with attention:
-- The encoder GRU processes past trajectory points and outputs hidden states.
-- The attention mechanism computes context vectors from encoder hidden states at each step.
-- The decoder GRU predicts future trajectory points autoregressively with attention.
-- A fully connected layer maps hidden states to output coordinates.
+- Encoder GRU encodes past positions.
+- Attention selects relevant encoder outputs.
+- Decoder GRU autoregressively generates future steps.
+- FC layer maps hidden states to coordinates.
 
-This model is suitable for trajectory prediction tasks in robotics, UAVs, and motion modeling.
+Supports flexible autoregressive decoding, and variable number of agents.
 """
 
 import torch
@@ -19,7 +18,10 @@ import torch.nn.functional as F
 
 class Attention(nn.Module):
     """
-    Additive (Bahdanau-style) attention mechanism.
+    Bahdanau-style additive attention.
+
+    Computes a context vector as a weighted sum of encoder outputs,
+    where weights are learned based on the current decoder hidden state.
     """
 
     def __init__(self, hidden_size):
@@ -45,11 +47,11 @@ class Attention(nn.Module):
         # Concatenate and compute scores
         energy = torch.tanh(
             self.attn(torch.cat((decoder_hidden, encoder_outputs), dim=2))
-        ) # (batch, seq_len, hidden_size)
+        )  # (batch, seq_len, hidden_size)
         attn_scores = self.v(energy).squeeze(-1)  # (batch, seq_len)
 
         # Softmax to get attention weights
-        attn_weights = F.softmax(attn_scores, dim=1) # (batch, seq_len)
+        attn_weights = F.softmax(attn_scores, dim=1)  # (batch, seq_len)
 
         # Weighted sum (context vector)
         context = torch.bmm(
@@ -63,19 +65,12 @@ class Attention(nn.Module):
 # Define Seq2Seq GRU Model with Attention
 class TrajPredictor(nn.Module):
     """
-    Sequence-to-sequence GRU model with attention for trajectory prediction.
+    Seq2Seq GRU model with attention for multi-agent trajectory prediction.
 
-    Architecture:
-        - Encoder GRU: Encodes past trajectory of length LOOK_BACK into hidden states.
-        - Attention: Computes weighted context vectors over encoder outputs.
-        - Decoder GRU: Autoregressively generates future trajectory of length FORWARD_LEN using context.
-        - Fully connected layer: Maps decoder hidden states to output coordinates.
-
-    Args:
-        input_size (int): Number of input features per timestep (e.g., 2 for x,y or 3 for x,y,z).
-        hidden_size (int): Number of hidden units in the GRU layers.
-        output_size (int): Number of output features per timestep.
-        num_layers (int): Number of stacked GRU layers for both encoder and decoder.
+    - Encoder GRU processes past trajectories.
+    - Attention highlights relevant encoder outputs for each step.
+    - Decoder GRU generates future trajectories autoregressively.
+    - Fully connected layer maps decoder states to coordinates.
     """
 
     def __init__(self, input_size=3, hidden_size=64, output_size=3, num_layers=1):
@@ -88,44 +83,61 @@ class TrajPredictor(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.ln = nn.LayerNorm(hidden_size)
+        self.input_size = input_size
 
-    def forward(self, x, pred_len=1):
+    def forward(self, src, tgt=None, pred_len=1):
         """
+        Run forward pass.
+
         Args:
-            x (torch.Tensor): Input past trajectory of shape (batch_size, LOOK_BACK, input_size).
-            pred_len (int): Number of future timesteps to predict.
+            src (Tensor): Past trajectories [batch, seq_len, num_agents * input_size].
+            tgt (Tensor, optional): Ground-truth futures [batch, pred_len, num_agents * input_size].
+            pred_len (int): Number of steps to predict if tgt is not given.
 
         Returns:
-            torch.Tensor: Predicted future trajectory.
-                - Shape (batch_size, pred_len, output_size) if pred_len > 1
-                - Shape (batch_size, output_size) if pred_len == 1
+            Tensor: Predicted trajectories [batch, pred_len, num_agents * input_size].
         """
-        # Encode past trajectory
-        encoder_outputs, hidden = self.encoder(x)
-        encoder_outputs = self.ln(encoder_outputs)
+        _, _, total_features = src.size()
+        num_agents = total_features // self.input_size
+        src_agents = torch.split(src, self.input_size, dim=2)
 
-        # First decoder input = last input point
-        decoder_input = x[:, -1:, :]
+        tgt_agents = None
+        if tgt is not None:
+            tgt_agents = torch.split(tgt, self.input_size, dim=2)
 
-        outputs = []
-        for _ in range(pred_len):
-            # Attention
-            dec_hidden_t = hidden[-1]  # (batch, hidden_size)
-            context, _ = self.attention(dec_hidden_t, encoder_outputs)  # (context, attn_weights)
+        outputs_per_agent = []
+        for agent_idx in range(num_agents):
+            # --- Encoder ---
+            enc_output, hidden = self.encoder(src_agents[agent_idx])
+            # hidden: [num_layers, batch, hidden_size]
+            hidden_dec = hidden  # no bidirectional merge
 
-            # Combine decoder input + context
-            dec_input = torch.cat([decoder_input.squeeze(1), context], dim=1)
-            dec_input = dec_input.unsqueeze(1)  # (batch, 1, input_size+hidden_size)
+            # --- Decoder ---
+            dec_input = src_agents[agent_idx][:, -1:, :]  # last input step
+            agent_outputs = []
+            for t in range(pred_len):
+                # Attention: [batch, 1, enc_hidden_size]
+                attn_weights = self.attention(hidden_dec[-1], enc_output)
+                context = torch.bmm(attn_weights.unsqueeze(1), enc_output)
 
-            # Decode
-            out, hidden = self.decoder(dec_input, hidden)
-            pred = self.fc(out)  # (batch, 1, output_size)
+                # GRU input = [batch, 1, input_size + enc_hidden_size]
+                rnn_input = torch.cat((dec_input, context), dim=2)
+                dec_out, hidden_dec = self.decoder(rnn_input, hidden_dec)
 
-            outputs.append(pred)
-            decoder_input = pred  # autoregressive feedback
+                # Project to output
+                pred = self.fc(dec_out.squeeze(1))
+                agent_outputs.append(pred.unsqueeze(1))
 
-        outputs = torch.cat(outputs, dim=1)
-        if pred_len == 1:
-            return outputs.squeeze(1)
+                # Teacher forcing vs autoregressive
+                if tgt_agents is not None:
+                    dec_input = tgt_agents[agent_idx][:, t : t + 1, :]
+                else:
+                    dec_input = pred.unsqueeze(1)
+
+            outputs_per_agent.append(torch.cat(agent_outputs, dim=1))
+
+        # --- Concatenate all agents ---
+        outputs = torch.cat(
+            outputs_per_agent, dim=2
+        )  # [batch, pred_len, num_agents * input_size]
         return outputs

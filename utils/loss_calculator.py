@@ -10,7 +10,7 @@ Combines:
 
 The total loss is a weighted sum of MSE and directional loss, controlled by `lambda_dir`.
 """
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 
