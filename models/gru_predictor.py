@@ -34,7 +34,7 @@ class TrajPredictor(nn.Module):
         num_layers (int): Number of stacked GRU layers for both encoder and decoder.
     """
 
-    def __init__(self, input_size=3, hidden_size=128, output_size=3, num_layers=1):
+    def __init__(self, input_size=3, hidden_size=64, output_size=3, num_layers=1):
         super(TrajPredictor, self).__init__()
         self.input_size = input_size
         self.encoder = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
