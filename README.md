@@ -156,6 +156,12 @@ EPOCHS = 500
 LEARNING_RATE = 1e-3
 NUM_PLOTS = 2
 NUM_SUBPLOTS = 2
+
+model_params = {
+    "enc_hidden_size": 64,
+    "dec_hidden_size": 64,
+    "num_layers": 1,
+}
 ```
 
 ---
