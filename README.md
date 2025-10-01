@@ -1,23 +1,37 @@
-# Multi-Agent Trajectory Prediction Training (`train.py`)
+# Multi-Agent Trajectory Prediction (`train.py` & `inference.py`)
 
-This repository contains a **sequence-to-coordinate trajectory prediction training script** written in PyTorch. It predicts **3D trajectories for multiple drones (or agents)** by taking sequences of past coordinates for each agent and predicting their future positions simultaneously.
+This repository contains **training and inference scripts** for **multi-agent 3D trajectory prediction** using PyTorch. The system predicts drone (or agent) trajectories by taking past coordinate sequences and forecasting their future positions in 3D space.
 
----
-
-## 🔁 Workflow (what `train.py` does)
-
-1. Load or generate multi-agent 3D trajectory data
-2. Convert trajectories into sequences of past frames (`LOOK_BACK`) and future frames (`FORWARD_LEN`) for all agents
-3. Split into training and testing sets
-4. Normalize features and convert to PyTorch tensors
-5. Train a sequence-to-sequence model (MSE loss, optional early stopping)
-6. Evaluate performance (MSE, RMSE, MAE, EDE) for all agents
-7. Visualize predictions vs ground truth in 3D plots
-8. Save model, config, and plots
+> During inference, this model supports predictions for a variable number of agents (drones), making it adaptable to different multi-agent scenarios.
 
 ---
 
-## 📦 Requirements (install first)
+## 📂 Directory Structure
+
+```bash
+.
+├── train.py              # Training script
+├── inference.py          # Inference script
+├── models/               # Model definitions (GRU, LSTM, RNN variants)
+├── data/                 # Datasets and dataset loaders
+├── utils/                # Utility/helper functions
+├── experiments/          # Saved runs (models, configs, logs, plots, scalers)
+│   ├── 20251001_094916/  # Example experiment folder
+│   │   ├── last_model.pt
+│   │   ├── best_model.pt
+│   │   ├── scaler_X.pkl
+│   │   ├── scaler_y.pkl
+│   │   ├── config.json
+│   │   ├── training.log
+│   │   ├── inference.log
+│   │   └── plots/
+├── requirements.txt      # Dependencies
+└── README.md             # Documentation
+```
+
+---
+
+## 📦 Requirements
 
 ```bash
 pip install -r requirements.txt
@@ -33,148 +47,161 @@ Minimum recommended environment:
 
 ---
 
-## ⚙️ Quick start — choose a model
+## 🔁 Training (`train.py`)
 
-Change the model import at the top of `train.py` to select the architecture you want to test:
+### Training Workflow
+
+1. Load or generate multi-agent 3D trajectory data
+2. Convert trajectories into past (`LOOK_BACK`) and future (`FORWARD_LEN`) frames
+3. Split into training and testing sets
+4. Normalize features and convert to PyTorch tensors
+5. Train a sequence-to-sequence model (MSE loss, optional early stopping)
+6. Save trained weights (`last_model.pt`, `best_model.pt`) and scalers (`scaler_X.pkl`, `scaler_y.pkl`)
+7. Evaluate performance (MSE, RMSE, MAE, EDE) including **per-timestep metrics**
+8. Generate 3D trajectory plots
+
+### Model Selection
+
+Choose a model by changing the import at the top of `train.py`:
 
 ```python
-# Example: bi-directional GRU with attention
+# Example: bidirectional GRU with attention
 from models.attention_bi_gru_predictor import TrajPredictor
 ```
 
-Available model modules:
+Available models:
 
-1. `attention_bi_gru_predictor` — Bidirectional GRU with attention
-2. `attention_bi_lstm_predictor` — Bidirectional LSTM with attention
-3. `attention_gru_predictor` — Uni-directional GRU with attention
-4. `attention_lstm_predictor` — Uni-directional LSTM with attention
-5. `gru_predictor` — Plain GRU
-6. `lstm_predictor` — Plain LSTM
-7. `rnn_predictor` — Plain RNN
+1. `attention_bi_gru_predictor` — Bi-GRU with attention
+2. `attention_bi_lstm_predictor` — Bi-LSTM with attention
+3. `attention_gru_predictor` — GRU with attention
+4. `attention_lstm_predictor` — LSTM with attention
+5. `gru_predictor` — plain GRU
+6. `lstm_predictor` — plain LSTM
+7. `rnn_predictor` — plain RNN
 
-> ⚠️ **Important:** Bidirectional architectures require separate encoder/decoder hidden sizes (`enc_hidden_size`, `dec_hidden_size`). Uni-directional architectures typically use a single `hidden_size`.
+### Model Parameters
 
----
-
-## 🛠 Model parameters (set after choosing model)
-
-**For bidirectional models:**
+**Bidirectional models:**
 
 ```python
 model_params = {
-    "input_size": X_train_tensor.shape[-1],  # features (e.g., 3 for x,y,z per agent)
-    "enc_hidden_size": 64, # encoder hidden size
-    "dec_hidden_size": 64, # decoder hidden size
-    "output_size": y_train_tensor.shape[-1], # same as input features
+    "enc_hidden_size": 64,
+    "dec_hidden_size": 64,
     "num_layers": 1,
 }
 ```
 
-**For uni-directional models:**
+**Uni-directional models:**
 
 ```python
 model_params = {
-    "input_size": X_train_tensor.shape[-1],  # features (e.g., 3 for x,y,z per agent)
-    "hidden_size": 64, # hidden size for encoder/decoder
-    "output_size": y_train_tensor.shape[-1], # same as input features
+    "hidden_size": 64,
     "num_layers": 1,
 }
 ```
 
----
-
-## 📁 Dataset configuration
-
-Set the dataset type in `train.py`:
+### Dataset Configuration
 
 ```python
-DATA_TYPE = "mixed"   # Options: "zurich", "quadcopter", "mixed"
-AGENTS = 3            # Number of agents/drones
+DATA_TYPE = "mixed"   # "zurich", "quadcopter", or "mixed"
+AGENTS = 3            # number of drones/agents
 ```
 
-* `zurich` — cleaned MAV dataset, 10 Hz
-* `quadcopter` — real quadcopter trajectories
-* `mixed` — combination of Zurich + quadcopter datasets for multi-agent scenarios
+* **zurich** — cleaned MAV dataset, 10 Hz
+* **quadcopter** — real quadcopter delivery dataset
+* **mixed** — combination of both
 
-`AGENTS` allows you to specify the number of drones in the simulation or dataset.
-
----
-
-## ⏱️ Data & training parameters
+### Data & Training Parameters
 
 ```python
-# Data parameters
-LOOK_BACK  = 50  # number of past frames used as input
-FORWARD_LEN = 5  # number of future frames to predict
+SEQUENTIAL_PREDICTION = True  # If False, predict only the last point
+LOOK_BACK = 50                # number of past frames as input
+FORWARD_LEN = 5               # number of future frames to predict
 
-# Training parameters
-BATCH_SIZE = 70
+# Training
+BATCH_SIZE = 32
 EPOCHS = 500
 LEARNING_RATE = 1e-3
 ```
 
-Adjust `LOOK_BACK` and `FORWARD_LEN` to experiment with short-term vs long-term forecasting.
-
----
-
-## 📊 Plotting & output
+### Plotting Parameters
 
 ```python
-NUM_PLOTS = 3  # number of plots generated after training
+NUM_PLOTS = 2     # number of full test trajectories to plot
+NUM_SUBPLOTS = 2  # number of detailed sequence plots per trajectory
 ```
 
-After training, the script will:
+* **NUM_PLOTS**: number of full prediction vs ground truth plots.
+* **NUM_SUBPLOTS**: number of detailed sequence comparisons (each with its own `LOOK_BACK` and `FORWARD_LEN`).
 
-* Save the trained model files (`best_model.pt` and `last_model.pt`)
-* Save the training configuration (`config.json`)
-* Save 3D plots of predicted vs ground-truth trajectories for selected examples
-* Save detailed training logs, including evaluation metrics (MSE, RMSE, MAE, EDE)
+### Training Example
 
----
+```bash
+python train.py
+```
 
-## ✅ Quick usage example
-
-Set dataset, number of agents, and model in `train.py`:
+Example configuration inside `train.py`:
 
 ```python
 from models.attention_bi_gru_predictor import TrajPredictor
 
 DATA_TYPE = "mixed"
 AGENTS = 3
+SEQUENTIAL_PREDICTION = True
 
 LOOK_BACK  = 50
 FORWARD_LEN = 5
-BATCH_SIZE = 70
+BATCH_SIZE = 32
 EPOCHS = 500
 LEARNING_RATE = 1e-3
-NUM_PLOTS = 4
-
-model_params = {
-    "input_size": X_train_tensor.shape[-1],
-    "enc_hidden_size": 64,
-    "dec_hidden_size": 64,
-    "output_size": y_train_tensor.shape[-1],
-    "num_layers": 1,
-}
+NUM_PLOTS = 2
+NUM_SUBPLOTS = 2
 ```
 
 ---
 
-## ▶️ Run the training script
+## ▶️ Inference (`inference.py`)
+
+### Inference Workflow
+
+1. Load saved model and scalers from an experiment directory
+2. Perform trajectory prediction for one or more agents
+3. Choose between **sequential prediction** (step-by-step) or **last-point-only prediction**
+4. Visualize results with detailed subplots
+
+### Inference Example
 
 ```bash
-python train.py
-# or
-python3 train.py
+python inference.py
 ```
+
+Key parameters inside `inference.py`:
+
+```python
+# Number of agents for inference
+AGENTS = 1
+
+# Sequential or last-point prediction
+SEQUENTIAL_PREDICTION = True
+
+# Number of detailed subplots
+NUM_SUBPLOTS = 1
+
+# Path to trained experiment folder
+experiment_dir = Path("experiments/20251001_094916")
+MODEL_PATH = experiment_dir / "last_model.pt"
+```
+
+> ⚠️ **Important:** Set the correct `experiment_dir` path to load model weights and scalers.
+> You can choose `last_model.pt` or `best_model.pt` depending on your needs.
 
 ---
 
 ## 📚 Dataset Credits
 
 * **Zurich MAV Dataset** – [https://rpg.ifi.uzh.ch/zurichmavdataset.html](https://rpg.ifi.uzh.ch/zurichmavdataset.html)
-* **Quadcopter Delivery Dataset (CMU)** – [https://kilthub.cmu.edu/articles/dataset/Data\_Collected\_with\_Package\_Delivery\_Quadcopter\_Drone/12683453](https://kilthub.cmu.edu/articles/dataset/Data_Collected_with_Package_Delivery_Quadcopter_Drone/12683453)
+* **Quadcopter Delivery Dataset (CMU)** – [https://kilthub.cmu.edu/articles/dataset/Data_Collected_with_Package_Delivery_Quadcopter_Drone/12683453](https://kilthub.cmu.edu/articles/dataset/Data_Collected_with_Package_Delivery_Quadcopter_Drone/12683453)
 
 ---
 
-Happy experimenting — try different numbers of drones, architectures, and hyperparameters to optimize multi-agent trajectory prediction!
+Happy experimenting — train on multiple agents, predict trajectories, and visualize them with detailed sequential plots 🚀
