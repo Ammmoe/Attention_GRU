@@ -68,6 +68,7 @@ def plot_trajectories(
                 true_traj[:, -1, start + 2],
                 label=f"Agent {agent + 1} True",
                 color=colors[agent],
+                linewidth=1,
             )
 
             # Predicted trajectory
@@ -78,6 +79,7 @@ def plot_trajectories(
                 label=f"Agent {agent + 1} Pred",
                 color=colors[agent],
                 linestyle="--",
+                linewidth=1,
             )
 
         ax.set_title(f"Trajectory {traj_idx} (True vs Predicted)")
@@ -159,6 +161,7 @@ def plot_inference_trajectory(
             y_true[:, -1, start + 2],
             label=f"Agent {agent + 1} True",
             color=colors[agent],
+            linewidth=1,
         )
         # Predicted trajectory
         ax.plot(
@@ -168,6 +171,7 @@ def plot_inference_trajectory(
             label=f"Agent {agent + 1} Pred",
             color=colors[agent],
             linestyle="--",
+            linewidth=1,
         )
 
     ax.set_title("Full Trajectory (True vs Predicted)")
@@ -267,7 +271,8 @@ def plot_3d_trajectories_subplots(
                 past_agent[:, 2],
                 f"{past_color}-",
                 marker="o",
-                markersize=2,
+                markersize=1.5,
+                linewidth=1,
                 label=past_label if agent_idx == 0 else None,
             )
 
@@ -277,6 +282,7 @@ def plot_3d_trajectories_subplots(
                 [past_agent[-1, 1], true_agent[0, 1]],
                 [past_agent[-1, 2], true_agent[0, 2]],
                 color=past_color,
+                linewidth=1,
             )
             ax.scatter(
                 true_agent[0, 0],
@@ -293,7 +299,8 @@ def plot_3d_trajectories_subplots(
                     true_agent[:, 2],
                     f"{true_color}-",
                     marker="o",
-                    markersize=2,
+                    markersize=1.5,
+                    linewidth=1,
                     label=true_label if agent_idx == 0 else None,
                 )
 
@@ -303,6 +310,7 @@ def plot_3d_trajectories_subplots(
                 [past_agent[-1, 1], pred_agent[0, 1]],
                 [past_agent[-1, 2], pred_agent[0, 2]],
                 color=past_color,
+                linewidth=1,
             )
             ax.scatter(
                 pred_agent[0, 0],
@@ -319,7 +327,8 @@ def plot_3d_trajectories_subplots(
                     pred_agent[:, 2],
                     f"{pred_color}-",
                     marker="o",
-                    markersize=2,
+                    markersize=1.5,
+                    linewidth=1,
                     label=pred_label if agent_idx == 0 else None,
                 )
 

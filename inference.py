@@ -41,7 +41,7 @@ from utils.logger import get_inference_logger
 from data.trajectory_loader import load_dataset
 
 # Set number of drones (agents) for inference
-AGENTS = 1
+AGENTS = 6
 
 # Set number of subplots for sequential plotter
 NUM_SUBPLOTS = 1
@@ -50,9 +50,9 @@ NUM_SUBPLOTS = 1
 SEQUENTIAL_PREDICTION = True
 
 # Paths & Config
-experiment_dir = Path("experiments/20251001_094916")
+experiment_dir = Path("experiments/20250929_161447")
 CONFIG_PATH = experiment_dir / "config.json"
-MODEL_PATH = experiment_dir / "last_model.pt"
+MODEL_PATH = experiment_dir / "best_model.pt"
 
 # Set up logger
 logger = get_inference_logger(exp_dir=str(experiment_dir))
@@ -64,7 +64,8 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 # Config params
 DATA_TYPE = config["DATA_TYPE"]
 LOOK_BACK = config["LOOK_BACK"]
-FORWARD_LEN = config["FORWARD_LEN"]
+# FORWARD_LEN = config["FORWARD_LEN"]
+FORWARD_LEN = 5
 FEATURES_PER_AGENT = 3
 
 # Log config info
@@ -293,7 +294,7 @@ plot_path = Path(experiment_dir) / f"inference_subplots_{traj_idx}_{timestamp}.p
 # Use the same plotting function as in train.py
 plot_3d_trajectories_subplots(
     trajectory_sets,
-    per_agent=True,
+    per_agent=False,
     title=f"Multi-Drone Inference Trajectory {traj_idx}",
     save_path=str(plot_path),
 )

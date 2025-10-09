@@ -33,7 +33,7 @@ class Attention(nn.Module):
         return torch.softmax(attention, dim=1)
 
 
-class MultiAgentTrajPredictor(nn.Module):
+class TrajPredictor(nn.Module):
     """
     Seq2Seq bi-directional LSTM with attention for multi-agent trajectory prediction.
 
