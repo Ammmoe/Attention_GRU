@@ -6,6 +6,7 @@ torch
 numpy
 pandas
 scikit-learn
+seaborn
 
 # Plotting
 matplotlib

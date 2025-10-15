@@ -152,6 +152,57 @@ def load_mixed_dataset(
     return pd.concat([quad_df, zurich_df], ignore_index=True)
 
 
+def load_simulated_dataset(
+    csv_path="data/drone_states.csv",
+    min_rows=800,
+    num_flights=3,
+    position_columns=None,
+) -> pd.DataFrame:
+    """
+    Load and process the Simulated Multi-Drone dataset into a ready-to-use DataFrame.
+
+    The dataset format should include columns:
+    [flight_id, time_stamp, drone_id, role, pos_x, pos_y, pos_z]
+
+    Each flight may contain multiple drones (agents). The loader:
+    - Groups by flight_id, then by drone_id
+    - Ensures each drone trajectory has at least `min_rows` rows
+    - Truncates all drones in a block to the shortest trajectory length
+    - Concatenates multiple drone trajectories side by side (num_flights per block)
+    - Adds a sequential trajectory index for analysis
+    """
+    if position_columns is None:
+        position_columns = ["pos_x", "pos_y", "pos_z"]
+
+    df = pd.read_csv(csv_path)
+    grouped_by_flight = df.groupby("flight_id")
+    all_flight_dfs = []
+
+    for _, flight_data in grouped_by_flight:
+        # group each flight by drone_id
+        drones = []
+        for _, drone_data in flight_data.groupby("drone_id"):
+            if len(drone_data) < min_rows:
+                continue
+            drones.append(
+                drone_data[position_columns].reset_index(drop=True)
+            )
+
+        if len(drones) < num_flights:
+            # skip flights that don't have enough drones
+            continue
+
+        concatenated = _concat_flights_into_blocks(drones, num_flights, position_columns)
+        all_flight_dfs.append(concatenated)
+
+    if not all_flight_dfs:
+        raise ValueError(
+            f"No valid flights found with at least {num_flights} drones having >= {min_rows} rows."
+        )
+
+    return pd.concat(all_flight_dfs, ignore_index=True)
+
+
 def load_dataset(
     data_type: str, min_rows=1000, num_flights=3, position_columns=None
 ) -> pd.DataFrame:
@@ -173,6 +224,12 @@ def load_dataset(
         )
     elif data_type.lower() == "mixed":
         return load_mixed_dataset(
+            min_rows=min_rows,
+            num_flights=num_flights,
+            position_columns=position_columns,
+        )
+    elif data_type.lower() == "simulated":
+        return load_simulated_dataset(
             min_rows=min_rows,
             num_flights=num_flights,
             position_columns=position_columns,
