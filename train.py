@@ -40,7 +40,7 @@ from utils.scaler import scale_per_agent
 
 # pylint: disable=all
 # Data settings and parameters
-DATA_TYPE = "zurich"  # Options: "zurich", "quadcopter", "mixed"
+DATA_TYPE = "simulated"  # Options: "zurich", "quadcopter", "mixed", "simulated"
 SEQUENTIAL_PREDICTION = (
     True  # If False, model predicts only the last point for FORWARD_LEN steps
 )

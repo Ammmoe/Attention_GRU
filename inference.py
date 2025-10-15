@@ -50,9 +50,9 @@ NUM_SUBPLOTS = 1
 SEQUENTIAL_PREDICTION = True
 
 # Paths & Config
-experiment_dir = Path("experiments/20250929_161447")
+experiment_dir = Path("experiments/20251015_134311")
 CONFIG_PATH = experiment_dir / "config.json"
-MODEL_PATH = experiment_dir / "best_model.pt"
+MODEL_PATH = experiment_dir / "last_model.pt"
 
 # Set up logger
 logger = get_inference_logger(exp_dir=str(experiment_dir))
