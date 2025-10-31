@@ -172,7 +172,7 @@ def load_simulated_dataset(
     - Adds a sequential trajectory index for analysis
     """
     if position_columns is None:
-        position_columns = ["pos_x", "pos_y", "pos_z"]
+        position_columns = ["pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z"]
 
     df = pd.read_csv(csv_path)
     grouped_by_flight = df.groupby("flight_id")

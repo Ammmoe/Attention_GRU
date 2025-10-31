@@ -344,3 +344,92 @@ def plot_3d_trajectories_subplots(
         plt.savefig(save_path, dpi=300)
     plt.show()
     plt.close()
+
+
+def plot_trajectories_with_velocity(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    traj_ids: np.ndarray,
+    plot_trajs: list,
+    scaler: MinMaxScaler,
+    agents: int,
+    save_dir: str,
+    plot_velocity: bool = True,
+    velocity_scale: float = 0.5,
+):
+    dim = 6  # x,y,z,vx,vy,vz per agent
+    colors = [plt.get_cmap("tab10")(i % 10) for i in range(agents)]
+
+    for traj_idx in plot_trajs:
+        mask = traj_ids == traj_idx
+        # Use dim=6 because scaler was fitted on all 6 features per agent
+        true_traj = scale_per_agent(y_true[mask], scaler, dim, inverse=True)
+        pred_traj = scale_per_agent(y_pred[mask], scaler, dim, inverse=True)
+
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection="3d")
+
+        for agent in range(agents):
+            start = agent * dim
+
+            # True positions
+            ax.plot(
+                true_traj[:, start],
+                true_traj[:, start + 1],
+                true_traj[:, start + 2],
+                label=f"Agent {agent + 1} True",
+                color=colors[agent],
+                linewidth=1,
+            )
+
+            # Predicted positions
+            ax.plot(
+                pred_traj[:, start],
+                pred_traj[:, start + 1],
+                pred_traj[:, start + 2],
+                label=f"Agent {agent + 1} Pred",
+                color=colors[agent],
+                linestyle="--",
+                linewidth=1,
+            )
+
+            if plot_velocity:
+                # True velocities
+                ax.quiver(
+                    true_traj[:, start],
+                    true_traj[:, start + 1],
+                    true_traj[:, start + 2],
+                    true_traj[:, start + 3],
+                    true_traj[:, start + 4],
+                    true_traj[:, start + 5],
+                    length=velocity_scale,
+                    color=colors[agent],
+                    normalize=True,
+                    alpha=0.5,
+                )
+
+                # Predicted velocities
+                ax.quiver(
+                    pred_traj[:, start],
+                    pred_traj[:, start + 1],
+                    pred_traj[:, start + 2],
+                    pred_traj[:, start + 3],
+                    pred_traj[:, start + 4],
+                    pred_traj[:, start + 5],
+                    length=velocity_scale,
+                    color=colors[agent],
+                    linestyle="dashed",
+                    normalize=True,
+                    alpha=0.5,
+                )
+
+        ax.set_title(f"Trajectory {traj_idx} (Positions + Velocities)")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.legend()
+
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, f"trajectory_{traj_idx}.png"), dpi=150)
+        plt.show()
+        plt.close()
