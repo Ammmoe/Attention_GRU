@@ -170,29 +170,53 @@ def load_simulated_dataset(
     - Truncates all drones in a block to the shortest trajectory length
     - Concatenates multiple drone trajectories side by side (num_flights per block)
     - Adds a sequential trajectory index for analysis
+    - Adds acceleration columns (acc_x, acc_y, acc_z) based on velocity differences
     """
     if position_columns is None:
         position_columns = ["pos_x", "pos_y", "pos_z", "vel_x", "vel_y", "vel_z"]
 
     df = pd.read_csv(csv_path)
+
+    # Sort by flight, drone, and timestamp to ensure correct temporal order
+    df = df.sort_values(by=["flight_id", "drone_id", "time_stamp"]).reset_index(
+        drop=True
+    )
+
+    # Compute acceleration per drone
+    df[["acc_x", "acc_y", "acc_z"]] = (
+        df.groupby(["flight_id", "drone_id"])
+        .apply(
+            lambda g: g[["vel_x", "vel_y", "vel_z"]]
+            .diff()
+            .div(g["time_stamp"].diff(), axis=0)
+        )
+        .reset_index(level=[0, 1], drop=True)
+    )
+
+    # Fill NaNs in the first row of each drone (no previous step)
+    df[["acc_x", "acc_y", "acc_z"]] = df[["acc_x", "acc_y", "acc_z"]].fillna(0)
+
     grouped_by_flight = df.groupby("flight_id")
     all_flight_dfs = []
 
     for _, flight_data in grouped_by_flight:
-        # group each flight by drone_id
         drones = []
         for _, drone_data in flight_data.groupby("drone_id"):
             if len(drone_data) < min_rows:
                 continue
+            # Include acceleration columns as well
             drones.append(
-                drone_data[position_columns].reset_index(drop=True)
+                drone_data[position_columns + ["acc_x", "acc_y", "acc_z"]].reset_index(
+                    drop=True
+                )
             )
 
         if len(drones) < num_flights:
-            # skip flights that don't have enough drones
             continue
 
-        concatenated = _concat_flights_into_blocks(drones, num_flights, position_columns)
+        concatenated = _concat_flights_into_blocks(
+            drones, num_flights, position_columns + ["acc_x", "acc_y", "acc_z"]
+        )
         all_flight_dfs.append(concatenated)
 
     if not all_flight_dfs:

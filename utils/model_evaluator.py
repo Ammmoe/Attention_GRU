@@ -187,8 +187,12 @@ def evaluate_metrics_multi_agent_pos_vel(
     assert y_true.shape[1] == total_features, "Mismatch in features and agents"
 
     # --- Inverse scaling ---
-    y_true_np = scale_per_agent(y_true.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True)
-    y_pred_np = scale_per_agent(y_pred.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True)
+    y_true_np = scale_per_agent(
+        y_true.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True
+    )
+    y_pred_np = scale_per_agent(
+        y_pred.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True
+    )
 
     # --- Reshape to (num_points, num_agents, 6) ---
     y_true_reshaped = y_true_np.reshape(-1, num_agents, num_features_per_agent)
@@ -209,7 +213,9 @@ def evaluate_metrics_multi_agent_pos_vel(
     pos_mse = (pos_errors**2).mean()
     pos_rmse = np.sqrt(pos_mse)
     pos_mae = np.abs(pos_errors).mean()
-    ede = np.linalg.norm(pos_errors, axis=2).mean()  # Euclidean distance only for positions
+    ede = np.linalg.norm(
+        pos_errors, axis=2
+    ).mean()  # Euclidean distance only for positions
 
     # --- Velocity metrics ---
     vel_errors = y_true_vel - y_pred_vel
@@ -221,10 +227,21 @@ def evaluate_metrics_multi_agent_pos_vel(
     vel_rmse = np.sqrt(vel_mse)
     vel_mae = np.abs(vel_errors).mean()
 
-    return (pos_mse, pos_rmse, pos_mae, ede,
-            vel_mse, vel_rmse, vel_mae,
-            axis_pos_mse, axis_pos_rmse, axis_pos_mae,
-            axis_vel_mse, axis_vel_rmse, axis_vel_mae)
+    return (
+        pos_mse,
+        pos_rmse,
+        pos_mae,
+        ede,
+        vel_mse,
+        vel_rmse,
+        vel_mae,
+        axis_pos_mse,
+        axis_pos_rmse,
+        axis_pos_mae,
+        axis_vel_mse,
+        axis_vel_rmse,
+        axis_vel_mae,
+    )
 
 
 def evaluate_metrics_multi_agent_pos_vel_per_timestep(
@@ -247,15 +264,25 @@ def evaluate_metrics_multi_agent_pos_vel_per_timestep(
     """
     num_features_per_agent = 6
     total_features = num_agents * num_features_per_agent
-    assert y_true.shape[2] == total_features, "Mismatch in number of features and agents"
+    assert y_true.shape[2] == total_features, (
+        "Mismatch in number of features and agents"
+    )
 
     # --- Inverse scaling ---
-    y_true_np = scale_per_agent(y_true.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True)
-    y_pred_np = scale_per_agent(y_pred.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True)
+    y_true_np = scale_per_agent(
+        y_true.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True
+    )
+    y_pred_np = scale_per_agent(
+        y_pred.cpu().numpy(), scaler, num_features_per_agent=6, inverse=True
+    )
 
     # --- Reshape to (num_sequences, pred_len, num_agents, 6) ---
-    y_true_reshaped = y_true_np.reshape(y_true_np.shape[0], y_true_np.shape[1], num_agents, num_features_per_agent)
-    y_pred_reshaped = y_pred_np.reshape(y_pred_np.shape[0], y_pred_np.shape[1], num_agents, num_features_per_agent)
+    y_true_reshaped = y_true_np.reshape(
+        y_true_np.shape[0], y_true_np.shape[1], num_agents, num_features_per_agent
+    )
+    y_pred_reshaped = y_pred_np.reshape(
+        y_pred_np.shape[0], y_pred_np.shape[1], num_agents, num_features_per_agent
+    )
 
     # --- Split positions and velocities ---
     y_true_pos = y_true_reshaped[:, :, :, :3]
@@ -284,7 +311,9 @@ def evaluate_metrics_multi_agent_pos_vel_per_timestep(
     # --- Compute metrics per timestep ---
     for t in range(pred_len):
         # --- Positions ---
-        pos_errors = y_true_pos[:, t] - y_pred_pos[:, t]  # shape (num_sequences, num_agents, 3)
+        pos_errors = (
+            y_true_pos[:, t] - y_pred_pos[:, t]
+        )  # shape (num_sequences, num_agents, 3)
         axis_pos_mse_t[t] = (pos_errors**2).reshape(-1, 3).mean(axis=0)
         axis_pos_rmse_t[t] = np.sqrt(axis_pos_mse_t[t])
         axis_pos_mae_t[t] = np.abs(pos_errors).reshape(-1, 3).mean(axis=0)
@@ -295,7 +324,9 @@ def evaluate_metrics_multi_agent_pos_vel_per_timestep(
         ede_t[t] = np.linalg.norm(pos_errors, axis=2).mean()  # Euclidean distance
 
         # --- Velocities ---
-        vel_errors = y_true_vel[:, t] - y_pred_vel[:, t]  # shape (num_sequences, num_agents, 3)
+        vel_errors = (
+            y_true_vel[:, t] - y_pred_vel[:, t]
+        )  # shape (num_sequences, num_agents, 3)
         axis_vel_mse_t[t] = (vel_errors**2).reshape(-1, 3).mean(axis=0)
         axis_vel_rmse_t[t] = np.sqrt(axis_vel_mse_t[t])
         axis_vel_mae_t[t] = np.abs(vel_errors).reshape(-1, 3).mean(axis=0)
@@ -304,7 +335,157 @@ def evaluate_metrics_multi_agent_pos_vel_per_timestep(
         vel_rmse_t[t] = np.sqrt(vel_mse_t[t])
         vel_mae_t[t] = np.abs(vel_errors).mean()
 
-    return (pos_mse_t, pos_rmse_t, pos_mae_t, ede_t,
-            vel_mse_t, vel_rmse_t, vel_mae_t,
-            axis_pos_mse_t, axis_pos_rmse_t, axis_pos_mae_t,
-            axis_vel_mse_t, axis_vel_rmse_t, axis_vel_mae_t)
+    return (
+        pos_mse_t,
+        pos_rmse_t,
+        pos_mae_t,
+        ede_t,
+        vel_mse_t,
+        vel_rmse_t,
+        vel_mae_t,
+        axis_pos_mse_t,
+        axis_pos_rmse_t,
+        axis_pos_mae_t,
+        axis_vel_mse_t,
+        axis_vel_rmse_t,
+        axis_vel_mae_t,
+    )
+
+
+def evaluate_metrics_multi_agent_pos_vel_acc_per_timestep(
+    y_true: torch.Tensor, y_pred: torch.Tensor, scaler: MinMaxScaler, num_agents: int
+):
+    """
+    Compute per-timestep regression metrics for multi-agent trajectories with positions + velocities + accelerations.
+
+    Args:
+        y_true (torch.Tensor): shape (num_sequences, pred_len, features), features = num_agents*9
+        y_pred (torch.Tensor): same shape as y_true
+        scaler (MinMaxScaler): fitted scaler to inverse-transform predictions
+        num_agents (int): number of agents
+
+    Returns:
+        pos_mse_t, pos_rmse_t, pos_mae_t, ede_t,
+        vel_mse_t, vel_rmse_t, vel_mae_t,
+        acc_mse_t, acc_rmse_t, acc_mae_t,
+        axis_pos_mse_t, axis_pos_rmse_t, axis_pos_mae_t,
+        axis_vel_mse_t, axis_vel_rmse_t, axis_vel_mae_t,
+        axis_acc_mse_t, axis_acc_rmse_t, axis_acc_mae_t
+    """
+    num_features_per_agent = 9
+    total_features = num_agents * num_features_per_agent
+    assert y_true.shape[2] == total_features, (
+        "Mismatch in number of features and agents"
+    )
+
+    # --- Inverse scaling ---
+    y_true_np = scale_per_agent(
+        y_true.cpu().numpy(),
+        scaler,
+        num_features_per_agent=num_features_per_agent,
+        inverse=True,
+    )
+    y_pred_np = scale_per_agent(
+        y_pred.cpu().numpy(),
+        scaler,
+        num_features_per_agent=num_features_per_agent,
+        inverse=True,
+    )
+
+    # --- Reshape to (num_sequences, pred_len, num_agents, 9) ---
+    y_true_reshaped = y_true_np.reshape(
+        y_true_np.shape[0], y_true_np.shape[1], num_agents, num_features_per_agent
+    )
+    y_pred_reshaped = y_pred_np.reshape(
+        y_pred_np.shape[0], y_pred_np.shape[1], num_agents, num_features_per_agent
+    )
+
+    # --- Split positions, velocities, accelerations ---
+    y_true_pos = y_true_reshaped[:, :, :, 0:3]
+    y_pred_pos = y_pred_reshaped[:, :, :, 0:3]
+
+    y_true_vel = y_true_reshaped[:, :, :, 3:6]
+    y_pred_vel = y_pred_reshaped[:, :, :, 3:6]
+
+    y_true_acc = y_true_reshaped[:, :, :, 6:9]
+    y_pred_acc = y_pred_reshaped[:, :, :, 6:9]
+
+    pred_len = y_true_reshaped.shape[1]
+
+    # --- Initialize arrays ---
+    pos_mse_t = np.zeros(pred_len)
+    pos_rmse_t = np.zeros(pred_len)
+    pos_mae_t = np.zeros(pred_len)
+    ede_t = np.zeros(pred_len)
+    axis_pos_mse_t = np.zeros((pred_len, 3))
+    axis_pos_rmse_t = np.zeros((pred_len, 3))
+    axis_pos_mae_t = np.zeros((pred_len, 3))
+
+    vel_mse_t = np.zeros(pred_len)
+    vel_rmse_t = np.zeros(pred_len)
+    vel_mae_t = np.zeros(pred_len)
+    axis_vel_mse_t = np.zeros((pred_len, 3))
+    axis_vel_rmse_t = np.zeros((pred_len, 3))
+    axis_vel_mae_t = np.zeros((pred_len, 3))
+
+    acc_mse_t = np.zeros(pred_len)
+    acc_rmse_t = np.zeros(pred_len)
+    acc_mae_t = np.zeros(pred_len)
+    axis_acc_mse_t = np.zeros((pred_len, 3))
+    axis_acc_rmse_t = np.zeros((pred_len, 3))
+    axis_acc_mae_t = np.zeros((pred_len, 3))
+
+    # --- Compute metrics per timestep ---
+    for t in range(pred_len):
+        # Positions
+        pos_errors = y_true_pos[:, t] - y_pred_pos[:, t]
+        axis_pos_mse_t[t] = (pos_errors**2).reshape(-1, 3).mean(axis=0)
+        axis_pos_rmse_t[t] = np.sqrt(axis_pos_mse_t[t])
+        axis_pos_mae_t[t] = np.abs(pos_errors).reshape(-1, 3).mean(axis=0)
+
+        pos_mse_t[t] = (pos_errors**2).mean()
+        pos_rmse_t[t] = np.sqrt(pos_mse_t[t])
+        pos_mae_t[t] = np.abs(pos_errors).mean()
+        ede_t[t] = np.linalg.norm(pos_errors, axis=2).mean()
+
+        # Velocities
+        vel_errors = y_true_vel[:, t] - y_pred_vel[:, t]
+        axis_vel_mse_t[t] = (vel_errors**2).reshape(-1, 3).mean(axis=0)
+        axis_vel_rmse_t[t] = np.sqrt(axis_vel_mse_t[t])
+        axis_vel_mae_t[t] = np.abs(vel_errors).reshape(-1, 3).mean(axis=0)
+
+        vel_mse_t[t] = (vel_errors**2).mean()
+        vel_rmse_t[t] = np.sqrt(vel_mse_t[t])
+        vel_mae_t[t] = np.abs(vel_errors).mean()
+
+        # Accelerations
+        acc_errors = y_true_acc[:, t] - y_pred_acc[:, t]
+        axis_acc_mse_t[t] = (acc_errors**2).reshape(-1, 3).mean(axis=0)
+        axis_acc_rmse_t[t] = np.sqrt(axis_acc_mse_t[t])
+        axis_acc_mae_t[t] = np.abs(acc_errors).reshape(-1, 3).mean(axis=0)
+
+        acc_mse_t[t] = (acc_errors**2).mean()
+        acc_rmse_t[t] = np.sqrt(acc_mse_t[t])
+        acc_mae_t[t] = np.abs(acc_errors).mean()
+
+    return (
+        pos_mse_t,
+        pos_rmse_t,
+        pos_mae_t,
+        ede_t,
+        vel_mse_t,
+        vel_rmse_t,
+        vel_mae_t,
+        acc_mse_t,
+        acc_rmse_t,
+        acc_mae_t,
+        axis_pos_mse_t,
+        axis_pos_rmse_t,
+        axis_pos_mae_t,
+        axis_vel_mse_t,
+        axis_vel_rmse_t,
+        axis_vel_mae_t,
+        axis_acc_mse_t,
+        axis_acc_rmse_t,
+        axis_acc_mae_t,
+    )

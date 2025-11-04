@@ -357,20 +357,36 @@ def plot_trajectories_with_velocity(
     plot_velocity: bool = True,
     velocity_scale: float = 0.5,
 ):
-    dim = 6  # x,y,z,vx,vy,vz per agent
-    colors = [plt.get_cmap("tab10")(i % 10) for i in range(agents)]
+    """
+    Plot 3D trajectories (true vs predicted) with optional velocity vectors.
+    Handles cases where some trajectories or timesteps have fewer agents.
+    """
+    dim = 6  # x, y, z, vx, vy, vz per agent
 
     for traj_idx in plot_trajs:
         mask = traj_ids == traj_idx
-        # Use dim=6 because scaler was fitted on all 6 features per agent
+        if not np.any(mask):
+            continue  # skip if no data for this traj_idx
+
+        # inverse scale
         true_traj = scale_per_agent(y_true[mask], scaler, dim, inverse=True)
         pred_traj = scale_per_agent(y_pred[mask], scaler, dim, inverse=True)
+
+        # infer actual number of agents available for this trajectory
+        current_agents = min(true_traj.shape[1], pred_traj.shape[1]) // dim
+        if current_agents == 0:
+            continue
+
+        colors = [plt.get_cmap("tab10")(i % 10) for i in range(current_agents)]
 
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection="3d")
 
-        for agent in range(agents):
+        for agent in range(current_agents):
             start = agent * dim
+            end = start + dim
+            if end > true_traj.shape[1] or end > pred_traj.shape[1]:
+                continue  # skip incomplete agent data
 
             # True positions
             ax.plot(
@@ -394,7 +410,114 @@ def plot_trajectories_with_velocity(
             )
 
             if plot_velocity:
-                # True velocities
+                # Handle cases where velocities might be missing (less than 6 features)
+                if true_traj.shape[1] >= end and pred_traj.shape[1] >= end:
+                    ax.quiver(
+                        true_traj[:, start],
+                        true_traj[:, start + 1],
+                        true_traj[:, start + 2],
+                        true_traj[:, start + 3],
+                        true_traj[:, start + 4],
+                        true_traj[:, start + 5],
+                        length=velocity_scale,
+                        color=colors[agent],
+                        normalize=True,
+                        alpha=0.5,
+                    )
+
+                    ax.quiver(
+                        pred_traj[:, start],
+                        pred_traj[:, start + 1],
+                        pred_traj[:, start + 2],
+                        pred_traj[:, start + 3],
+                        pred_traj[:, start + 4],
+                        pred_traj[:, start + 5],
+                        length=velocity_scale,
+                        color=colors[agent],
+                        linestyle="dashed",
+                        normalize=True,
+                        alpha=0.5,
+                    )
+
+        ax.set_title(f"Trajectory {traj_idx} (Positions + Velocities)")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.legend()
+
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, f"trajectory_{traj_idx}.png"), dpi=150)
+        plt.show()
+
+
+def plot_trajectories_with_velocity_acceleration(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    traj_ids: np.ndarray,
+    plot_trajs: list,
+    scaler: MinMaxScaler,
+    agents: int,
+    save_dir: str,
+    plot_velocity: bool = True,
+    plot_acceleration: bool = True,
+    velocity_scale: float = 0.5,
+    acceleration_scale: float = 0.3,
+):
+    """
+    Plot 3D trajectories (true vs predicted) with optional velocity and acceleration vectors.
+    Handles cases where some trajectories or timesteps have fewer agents.
+    Assumes 9 features per agent: pos(3), vel(3), acc(3).
+    """
+    dim = 9  # x,y,z, vx,vy,vz, ax,ay,az per agent
+
+    for traj_idx in plot_trajs:
+        mask = traj_ids == traj_idx
+        if not np.any(mask):
+            continue  # skip if no data for this traj_idx
+
+        # inverse scale
+        true_traj = scale_per_agent(y_true[mask], scaler, dim, inverse=True)
+        pred_traj = scale_per_agent(y_pred[mask], scaler, dim, inverse=True)
+
+        # infer actual number of agents available for this trajectory
+        current_agents = min(true_traj.shape[1], pred_traj.shape[1]) // dim
+        if current_agents == 0:
+            continue
+
+        colors = [plt.get_cmap("tab10")(i % 10) for i in range(current_agents)]
+
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection="3d")
+
+        for agent in range(current_agents):
+            start = agent * dim
+            end = start + dim
+            if end > true_traj.shape[1] or end > pred_traj.shape[1]:
+                continue  # skip incomplete agent data
+
+            # True positions
+            ax.plot(
+                true_traj[:, start],
+                true_traj[:, start + 1],
+                true_traj[:, start + 2],
+                label=f"Agent {agent + 1} True",
+                color=colors[agent],
+                linewidth=1,
+            )
+
+            # Predicted positions
+            ax.plot(
+                pred_traj[:, start],
+                pred_traj[:, start + 1],
+                pred_traj[:, start + 2],
+                label=f"Agent {agent + 1} Pred",
+                color=colors[agent],
+                linestyle="--",
+                linewidth=1,
+            )
+
+            if plot_velocity and true_traj.shape[1] >= end and pred_traj.shape[1] >= end:
+                # Velocity vectors (positions + 3:6)
                 ax.quiver(
                     true_traj[:, start],
                     true_traj[:, start + 1],
@@ -408,7 +531,6 @@ def plot_trajectories_with_velocity(
                     alpha=0.5,
                 )
 
-                # Predicted velocities
                 ax.quiver(
                     pred_traj[:, start],
                     pred_traj[:, start + 1],
@@ -422,8 +544,39 @@ def plot_trajectories_with_velocity(
                     normalize=True,
                     alpha=0.5,
                 )
+            
+            if plot_acceleration and true_traj.shape[1] >= end and pred_traj.shape[1] >= end:
+                # Acceleration vectors (positions + 6:9)
+                ax.quiver(
+                    true_traj[:, start],
+                    true_traj[:, start + 1],
+                    true_traj[:, start + 2],
+                    true_traj[:, start + 6],
+                    true_traj[:, start + 7],
+                    true_traj[:, start + 8],
+                    length=acceleration_scale,
+                    color=colors[agent],
+                    normalize=True,
+                    alpha=0.3,
+                    linewidth=0.8,
+                )
 
-        ax.set_title(f"Trajectory {traj_idx} (Positions + Velocities)")
+                ax.quiver(
+                    pred_traj[:, start],
+                    pred_traj[:, start + 1],
+                    pred_traj[:, start + 2],
+                    pred_traj[:, start + 6],
+                    pred_traj[:, start + 7],
+                    pred_traj[:, start + 8],
+                    length=acceleration_scale,
+                    color=colors[agent],
+                    linestyle="dashed",
+                    normalize=True,
+                    alpha=0.3,
+                    linewidth=0.8,
+                )
+
+        ax.set_title(f"Trajectory {traj_idx} (Positions + Velocities + Accelerations)")
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")
@@ -432,4 +585,3 @@ def plot_trajectories_with_velocity(
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, f"trajectory_{traj_idx}.png"), dpi=150)
         plt.show()
-        plt.close()
