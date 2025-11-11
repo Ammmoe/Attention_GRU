@@ -36,7 +36,7 @@ It is recommended to use a conda environment to isolate dependencies.
 
 ```bash
 # Create and activate the environment
-conda create -n traj_pred python=3.8
+conda create -n traj_pred
 conda activate traj_pred
 
 # Install required dependencies
