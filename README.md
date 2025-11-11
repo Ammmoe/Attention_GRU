@@ -31,6 +31,20 @@ This repository contains **training and inference scripts** for **multi-agent 3D
 
 ---
 
+🧱 Environment Setup
+It is recommended to use a conda environment to isolate dependencies.
+
+```bash
+# Create and activate the environment
+conda create -n traj_pred python=3.8
+conda activate traj_pred
+
+# Install required dependencies
+pip install -r requirements.txt
+```
+
+---
+
 ## 📦 Requirements
 
 ```bash
@@ -115,14 +129,18 @@ AGENTS = 3            # number of drones/agents
 
 ```python
 SEQUENTIAL_PREDICTION = True  # If False, predict only the last point
+EMBEDDING_EXTRACTION = True   # If True, predict input values (for embedding analysis)
 LOOK_BACK = 50                # number of past frames as input
 FORWARD_LEN = 5               # number of future frames to predict
+FEATURES_PER_AGENT = 6        # Example: x, y, z, vx, vy, vz
 
 # Training
 BATCH_SIZE = 32
 EPOCHS = 500
 LEARNING_RATE = 1e-3
 ```
+
+* **EMBEDDING_EXTRACTION**: enables a mode where the model predicts the input values instead of future trajectories, useful for analyzing embedding representations rather than forecasting.
 
 ### Plotting Parameters
 
@@ -209,5 +227,3 @@ MODEL_PATH = experiment_dir / "last_model.pt"
 * **Quadcopter Delivery Dataset (CMU)** – [https://kilthub.cmu.edu/articles/dataset/Data_Collected_with_Package_Delivery_Quadcopter_Drone/12683453](https://kilthub.cmu.edu/articles/dataset/Data_Collected_with_Package_Delivery_Quadcopter_Drone/12683453)
 
 ---
-
-Happy experimenting — train on multiple agents, predict trajectories, and visualize them with detailed sequential plots 🚀
