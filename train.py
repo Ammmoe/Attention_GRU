@@ -29,12 +29,15 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 from data.trajectory_loader import load_dataset
 from models.attention_bi_gru_predictor import TrajPredictor
-from utils.logger import get_logger
-from utils.model_evaluator import evaluate_metrics_multi_agent_per_timestep as evaluate
-from utils.plot_generator import plot_trajectories, plot_3d_trajectories_subplots
+from utils.logger import get_logger, log_metrics_for_features
+from utils.plot_generator import (
+    plot_multiagent_trajectories,
+    plot_3d_trajectories_subplots,
+)
 from utils.scaler import scale_per_agent
 
 
@@ -44,10 +47,14 @@ DATA_TYPE = "simulated"  # Options: "zurich", "quadcopter", "mixed", "simulated"
 SEQUENTIAL_PREDICTION = (
     True  # If False, model predicts only the last point for FORWARD_LEN steps
 )
-AGENTS = 3  # Number of agents or drones
+EMBEDDING_EXTRACTION = False
+AGENTS = 6  # Number of agents or drones
 LOOK_BACK = 50  # Number of past time steps to use as input
-FORWARD_LEN = 5  # Number of future time steps to predict
-FEATURES_PER_AGENT = 3  # x, y, z
+if EMBEDDING_EXTRACTION:
+    FORWARD_LEN = 50  # Prediction is the same as LOOK_BACK for embedding extraction
+else:
+    FORWARD_LEN = 5  # Number of future time steps to predict
+FEATURES_PER_AGENT = 6  # x, y, z, vx, vy, vz, ax, ay, az
 
 # Training parameters
 BATCH_SIZE = 32
@@ -55,8 +62,8 @@ EPOCHS = 500
 LEARNING_RATE = 1e-3
 
 # Plotting parameters
-NUM_PLOTS = 3  # number of plots to generate
-NUM_SUBPLOTS = 3 # number of subplots to generate
+NUM_PLOTS = 2  # number of plots to generate
+NUM_SUBPLOTS = 2  # number of subplots to generate
 
 # Setup logger and experiment folder
 logger, exp_dir = get_logger()
@@ -75,7 +82,9 @@ df = load_dataset(
     DATA_TYPE,
     min_rows=800,
     num_flights=AGENTS,
+    features_per_agent=FEATURES_PER_AGENT,
 )
+print(df.shape)
 
 # Prepare sequences
 # Track trajectory indices to be used in plotting later
@@ -93,14 +102,17 @@ for traj_idx in df["trajectory_index"].unique():
         seq_X = traj_data[i : i + LOOK_BACK]  # shape (LOOK_BACK, features)
 
         # For sequential prediction, predict FORWARD_LEN steps; else just the last step
-        if SEQUENTIAL_PREDICTION:
-            seq_y = traj_data[
-                i + LOOK_BACK : i + LOOK_BACK + FORWARD_LEN
-            ]  # shape (FORWARD_LEN, features)
+        if EMBEDDING_EXTRACTION is False:
+            if SEQUENTIAL_PREDICTION:
+                seq_y = traj_data[
+                    i + LOOK_BACK : i + LOOK_BACK + FORWARD_LEN
+                ]  # shape (FORWARD_LEN, features)
+            else:
+                seq_y = traj_data[
+                    i + LOOK_BACK + FORWARD_LEN - 1 : i + LOOK_BACK + FORWARD_LEN
+                ]  # (1, features)
         else:
-            seq_y = traj_data[
-                i + LOOK_BACK + FORWARD_LEN - 1 : i + LOOK_BACK + FORWARD_LEN
-            ]  # (1, features)
+            seq_y = seq_X.copy()  # For embedding extraction, target is same as input
 
         X.append(seq_X)
         y.append(seq_y)
@@ -164,6 +176,7 @@ logger.info("Using device: %s", device)
 
 # Model, criterion, optimizer
 model_params = {
+    "input_size": FEATURES_PER_AGENT,
     "enc_hidden_size": 64,
     "dec_hidden_size": 64,
     "num_layers": 1,
@@ -180,7 +193,7 @@ logger.info("Model architecture:\n%s", model)
 training_start = time.time()
 
 # Early stopping parameters
-patience = 15
+patience = 10
 best_loss = float("inf")
 epochs_no_improve = 0
 early_stop = False
@@ -190,7 +203,7 @@ model.train()
 try:
     for epoch in range(EPOCHS):
         total_loss = 0.0
-        for batch_x, batch_y in train_loader:
+        for batch_x, batch_y in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS}"):
             batch_x, batch_y = batch_x.to(device), batch_y.to(device)
             optimizer.zero_grad()
 
@@ -246,7 +259,7 @@ total_sequences = 0
 
 model.eval()
 with torch.no_grad():
-    for batch_x, batch_y in test_loader:
+    for batch_x, batch_y in tqdm(test_loader, desc="Evaluating"):
         batch_x, batch_y = batch_x.to(device), batch_y.to(device)
         total_sequences += batch_x.size(0)
 
@@ -289,70 +302,7 @@ logger.info("Average inference time per batch: %.6f seconds", avg_inf_time_per_b
 y_pred = torch.cat(all_preds, dim=0)
 y_true = torch.cat(all_trues, dim=0)
 
-# Compute evaluation metrics (inverse scaling applied)
-mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t = evaluate(
-    y_true, y_pred, scaler_y, num_agents=AGENTS
-)
-
-# Table header
-header = (
-    f"{'Timestep':>8} | {'EDE':>10} | {'MSE':>10} | {'RMSE':>10} | {'MAE':>10} | "
-    f"{'MSE_x':>10} {'MSE_y':>10} {'MSE_z':>10} | "
-    f"{'RMSE_x':>10} {'RMSE_y':>10} {'RMSE_z':>10} | "
-    f"{'MAE_x':>10} {'MAE_y':>10} {'MAE_z':>10}"
-)
-logger.info("-" * len(header))
-logger.info(header)
-logger.info("-" * len(header))
-
-# Table rows
-for t, (ede, mse, rmse, mae, axis_mse, axis_rmse, axis_mae) in enumerate(
-    zip(ede_t, mse_t, rmse_t, mae_t, axis_mse_t, axis_rmse_t, axis_mae_t)
-):
-    logger.info(
-        "%8d | %10.6f | %10.6f | %10.6f | %10.6f | "
-        "%10.6f %10.6f %10.6f | "
-        "%10.6f %10.6f %10.6f | "
-        "%10.6f %10.6f %10.6f",
-        t,
-        ede,
-        mse,
-        rmse,
-        mae,
-        axis_mse[0],
-        axis_mse[1],
-        axis_mse[2],
-        axis_rmse[0],
-        axis_rmse[1],
-        axis_rmse[2],
-        axis_mae[0],
-        axis_mae[1],
-        axis_mae[2],
-    )
-
-# Summary averages
-logger.info("-" * len(header))
-logger.info(
-    "%8s | %10.6f | %10.6f | %10.6f | %10.6f | "
-    "%10.6f %10.6f %10.6f | "
-    "%10.6f %10.6f %10.6f | "
-    "%10.6f %10.6f %10.6f",
-    "Average",
-    ede_t.mean(),
-    mse_t.mean(),
-    rmse_t.mean(),
-    mae_t.mean(),
-    axis_mse_t.mean(axis=0)[0],
-    axis_mse_t.mean(axis=0)[1],
-    axis_mse_t.mean(axis=0)[2],
-    axis_rmse_t.mean(axis=0)[0],
-    axis_rmse_t.mean(axis=0)[1],
-    axis_rmse_t.mean(axis=0)[2],
-    axis_mae_t.mean(axis=0)[0],
-    axis_mae_t.mean(axis=0)[1],
-    axis_mae_t.mean(axis=0)[2],
-)
-logger.info("-" * len(header))
+log_metrics_for_features(y_true, y_pred, scaler_y, AGENTS, FEATURES_PER_AGENT, logger)
 
 # Save config / hyperparameters
 config = {
@@ -387,50 +337,60 @@ plot_trajs = np.random.choice(
 ).tolist()
 
 # Plot trajectories using the helper function
-plot_trajectories(
+plot_multiagent_trajectories(
     y_true=y_true.numpy(),
     y_pred=y_pred.numpy(),
     traj_ids=traj_test,
     plot_trajs=plot_trajs,
     scaler=scaler_y,
-    agents=AGENTS,
+    features_per_agent=FEATURES_PER_AGENT,
     save_dir=exp_dir,
+    velocity_scale=0.5,
+    acceleration_scale=0.3,
 )
 
-# Stack all past inputs (for context)
-past_inputs = torch.cat(
-    [b for b, _ in test_loader], dim=0
-).numpy()  # (num_sequences, LOOK_BACK, num_features)
+if not EMBEDDING_EXTRACTION:
+    # Stack all past inputs (for context)
+    past_inputs = torch.cat(
+        [b for b, _ in test_loader], dim=0
+    ).numpy()  # (num_sequences, LOOK_BACK, num_features)
 
-# Ensure NUM_PLOTS does not exceed number of sequences
-num_sequences = y_true.shape[0]
-NUM_SUBPLOTS = min(NUM_SUBPLOTS, num_sequences)
+    # Ensure NUM_PLOTS does not exceed number of sequences
+    num_sequences = y_true.shape[0]
+    NUM_SUBPLOTS = min(NUM_SUBPLOTS, num_sequences)
 
-# Randomly select sequence indices for plotting
-plot_indices = np.random.choice(num_sequences, size=NUM_SUBPLOTS, replace=False)
+    # Randomly select sequence indices for plotting
+    plot_indices = np.random.choice(num_sequences, size=NUM_SUBPLOTS, replace=False)
 
-trajectory_sets = []
+    trajectory_sets = []
 
-for seq_idx in plot_indices:
-    past = past_inputs[seq_idx]  # shape: (LOOK_BACK, features)
-    true_future = y_true[seq_idx]  # shape: (seq_len, features)
-    pred_future = y_pred[seq_idx]  # shape: (seq_len, features)
+    for seq_idx in plot_indices:
+        past = past_inputs[seq_idx]  # shape: (LOOK_BACK, features)
+        true_future = y_true[seq_idx]  # shape: (seq_len, features)
+        pred_future = y_pred[seq_idx]  # shape: (seq_len, features)
 
-    # Inverse scale past and future
-    past_orig = scale_per_agent(past, scaler_X, FEATURES_PER_AGENT, inverse=True)
-    true_future_orig = scale_per_agent(
-        true_future, scaler_y, FEATURES_PER_AGENT, inverse=True
+        # Inverse scale past and future
+        past_orig = scale_per_agent(past, scaler_X, FEATURES_PER_AGENT, inverse=True)
+        true_future_orig = scale_per_agent(
+            true_future, scaler_y, FEATURES_PER_AGENT, inverse=True
+        )
+        pred_future_orig = scale_per_agent(
+            pred_future, scaler_y, FEATURES_PER_AGENT, inverse=True
+        )
+
+        # Concatenate last past point with future to make continuous lines
+        true_line = np.vstack([past_orig[-1:], true_future_orig])
+        pred_line = np.vstack([past_orig[-1:], pred_future_orig])
+
+        trajectory_sets.append((past_orig, true_line, pred_line))
+
+    # Create subplots for selected sequences
+    plot_path = Path(exp_dir) / "training_subplots.png"
+    plot_3d_trajectories_subplots(
+        trajectory_sets,
+        per_agent=True,
+        num_features=FEATURES_PER_AGENT,  # Enable velocity + acceleration
+        velocity_scale=0.5,  # Adjust arrow length
+        acceleration_scale=0.3,  # Adjust arrow length
+        save_path=str(plot_path),
     )
-    pred_future_orig = scale_per_agent(
-        pred_future, scaler_y, FEATURES_PER_AGENT, inverse=True
-    )
-
-    # Concatenate last past point with future to make continuous lines
-    true_line = np.vstack([past_orig[-1:], true_future_orig])
-    pred_line = np.vstack([past_orig[-1:], pred_future_orig])
-
-    trajectory_sets.append((past_orig, true_line, pred_line))
-
-# Create subplots for selected sequences
-plot_path = Path(exp_dir) / "training_subplots.png"
-plot_3d_trajectories_subplots(trajectory_sets, save_path=str(plot_path))
