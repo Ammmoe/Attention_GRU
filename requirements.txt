@@ -3,10 +3,11 @@
 
 # Core ML and data processing
 torch
-numpy
+numpy==1.21.5
 pandas
 scikit-learn
 seaborn
+tqdm
 
 # Plotting
 matplotlib
