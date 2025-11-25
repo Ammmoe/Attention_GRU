@@ -30,7 +30,7 @@ This repository contains **training and inference scripts** for **multi-agent 3D
 ├── scripts/                    # Runnable entry points (thin wrappers)
 │   ├── train.py                # Training script
 │   └── inference.py            # Inference script
-├── project/                    # Main importable package (reusable code)
+├── multi_traj_predict/                    # Main importable package (reusable code)
 │   ├── __init__.py             # Package initialization
 │   ├── models/                 # Model definitions and architectures
 │   │   └── *                   # e.g., GRU, LSTM, RNN model files
