@@ -35,11 +35,11 @@ from multi_traj_predict.utils.plot_generator import (
     plot_inference_trajectory,
     plot_3d_trajectories_subplots,
 )
-from multi_traj_predict.utils.model_evaluator import (
-    evaluate_metrics_multi_agent_per_timestep as evaluate,
-)
 from multi_traj_predict.utils.scaler import scale_per_agent
-from multi_traj_predict.utils.logger import get_inference_logger
+from multi_traj_predict.utils.logger import (
+    get_inference_logger,
+    log_metrics_for_features,
+)
 from multi_traj_predict.data.trajectory_loader import load_dataset
 
 
@@ -55,7 +55,7 @@ def main():
     SEQUENTIAL_PREDICTION = True
 
     # Paths & Config
-    experiment_dir = Path("experiments/20251015_134311")
+    experiment_dir = Path("experiments/20251002_102852")
     CONFIG_PATH = experiment_dir / "config.json"
     MODEL_PATH = experiment_dir / "last_model.pt"
 
@@ -71,7 +71,7 @@ def main():
     LOOK_BACK = config["LOOK_BACK"]
     # FORWARD_LEN = config["FORWARD_LEN"]
     FORWARD_LEN = 5
-    FEATURES_PER_AGENT = 3
+    FEATURES_PER_AGENT = config["FEATURES_PER_AGENT"]
 
     # Log config info
     logger.info("Dataset used: %s", DATA_TYPE)
@@ -183,130 +183,78 @@ def main():
     y_true_scaled = np.array(
         y_true_scaled
     )  # shape: (num_sequences, FORWARD_LEN, features)
+    
+    # Convert to tensor because log metrics function accepts tensors
+    y_true_tensor = torch.tensor(y_true_scaled, dtype=torch.float32)
+    y_pred_tensor = torch.tensor(y_pred_scaled, dtype=torch.float32)
 
-    # Compute evaluation metrics (inverse scaling applied)
-    mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t = evaluate(
-        torch.from_numpy(y_true_scaled),
-        torch.from_numpy(y_pred_scaled),
-        scaler_y,
-        num_agents=AGENTS,
+    log_metrics_for_features(
+        y_true_tensor, y_pred_tensor, scaler_y, AGENTS, FEATURES_PER_AGENT, logger
     )
 
-    # pylint: disable=invalid-name
-    # Table header
-    header = (
-        f"{'Timestep':>8} | {'EDE':>10} | {'MSE':>10} | {'RMSE':>10} | {'MAE':>10} | "
-        f"{'MSE_x':>10} {'MSE_y':>10} {'MSE_z':>10} | "
-        f"{'RMSE_x':>10} {'RMSE_y':>10} {'RMSE_z':>10} | "
-        f"{'MAE_x':>10} {'MAE_y':>10} {'MAE_z':>10}"
-    )
-    logger.info("-" * len(header))
-    logger.info(header)
-    logger.info("-" * len(header))
-
-    # Table rows
-    for t, (ede, mse, rmse, mae, axis_mse, axis_rmse, axis_mae) in enumerate(
-        zip(ede_t, mse_t, rmse_t, mae_t, axis_mse_t, axis_rmse_t, axis_mae_t)
-    ):
-        logger.info(
-            "%8d | %10.6f | %10.6f | %10.6f | %10.6f | "
-            "%10.6f %10.6f %10.6f | "
-            "%10.6f %10.6f %10.6f | "
-            "%10.6f %10.6f %10.6f",
-            t,
-            ede,
-            mse,
-            rmse,
-            mae,
-            axis_mse[0],
-            axis_mse[1],
-            axis_mse[2],
-            axis_rmse[0],
-            axis_rmse[1],
-            axis_rmse[2],
-            axis_mae[0],
-            axis_mae[1],
-            axis_mae[2],
+    if FEATURES_PER_AGENT == 3:
+        # inverse scale for plotting
+        y_true = scale_per_agent(
+            y_true_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True
+        )
+        y_pred = scale_per_agent(
+            y_pred_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True
         )
 
-    # Summary averages
-    logger.info("-" * len(header))
-    logger.info(
-        "%8s | %10.6f | %10.6f | %10.6f | %10.6f | "
-        "%10.6f %10.6f %10.6f | "
-        "%10.6f %10.6f %10.6f | "
-        "%10.6f %10.6f %10.6f",
-        "Average",
-        ede_t.mean(),
-        mse_t.mean(),
-        rmse_t.mean(),
-        mae_t.mean(),
-        axis_mse_t.mean(axis=0)[0],
-        axis_mse_t.mean(axis=0)[1],
-        axis_mse_t.mean(axis=0)[2],
-        axis_rmse_t.mean(axis=0)[0],
-        axis_rmse_t.mean(axis=0)[1],
-        axis_rmse_t.mean(axis=0)[2],
-        axis_mae_t.mean(axis=0)[0],
-        axis_mae_t.mean(axis=0)[1],
-        axis_mae_t.mean(axis=0)[2],
-    )
-    logger.info("-" * len(header))
+        # Plot full trajectory
+        plot_inference_trajectory(
+            y_true=y_true,
+            y_pred=y_pred,
+            agents=AGENTS,
+            save_dir=str(experiment_dir),
+            filename=f"inference_trajectory_{traj_idx}.png",
+        )
 
-    # inverse scale for plotting
-    y_true = scale_per_agent(y_true_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True)
-    y_pred = scale_per_agent(y_pred_scaled, scaler_y, FEATURES_PER_AGENT, inverse=True)
+        # Number of sequences to visualize (e.g., 4 randomly chosen timesteps)
+        NUM_SUBPLOTS = min(NUM_SUBPLOTS, y_true.shape[0])
 
-    # Plot full trajectory
-    plot_inference_trajectory(
-        y_true=y_true,
-        y_pred=y_pred,
-        agents=AGENTS,
-        save_dir=str(experiment_dir),
-        filename=f"inference_trajectory_{traj_idx}.png",
-    )
+        # Select random indices for plotting
+        plot_indices = np.random.choice(
+            np.arange(LOOK_BACK, y_true.shape[0]),  # indices starting from 50
+            NUM_SUBPLOTS,
+            replace=False,
+        )
 
-    # Number of sequences to visualize (e.g., 4 randomly chosen timesteps)
-    NUM_SUBPLOTS = min(NUM_SUBPLOTS, y_true.shape[0])
+        trajectory_sets = []
 
-    # Select random indices for plotting
-    plot_indices = np.random.choice(
-        np.arange(LOOK_BACK, y_true.shape[0]),  # indices starting from 50
-        NUM_SUBPLOTS,
-        replace=False,
-    )
+        for idx in plot_indices:
+            # For inference, "past" is the LOOK_BACK window ending at this sequence
+            start_idx = max(0, idx - LOOK_BACK)
 
-    trajectory_sets = []
+            past = traj_scaled_X[start_idx:idx]  # scaled input
+            past_orig = scale_per_agent(
+                past, scaler_X, FEATURES_PER_AGENT, inverse=True
+            )
 
-    for idx in plot_indices:
-        # For inference, "past" is the LOOK_BACK window ending at this sequence
-        start_idx = max(0, idx - LOOK_BACK)
+            true_future = y_true[idx]
+            pred_future = y_pred[idx]
 
-        past = traj_scaled_X[start_idx:idx]  # scaled input
-        past_orig = scale_per_agent(past, scaler_X, FEATURES_PER_AGENT, inverse=True)
+            # Make continuous lines
+            true_line = np.vstack([past_orig[-1:], true_future])
+            pred_line = np.vstack([past_orig[-1:], pred_future])
 
-        true_future = y_true[idx]
-        pred_future = y_pred[idx]
+            trajectory_sets.append((past_orig, true_line, pred_line))
 
-        # Make continuous lines
-        true_line = np.vstack([past_orig[-1:], true_future])
-        pred_line = np.vstack([past_orig[-1:], pred_future])
+        # Generate short timestamp for filenames
+        timestamp = time.strftime("%H%M%S")
 
-        trajectory_sets.append((past_orig, true_line, pred_line))
+        # Define save path
+        plot_path = (
+            Path(experiment_dir) / f"inference_subplots_{traj_idx}_{timestamp}.png"
+        )
 
-    # Generate short timestamp for filenames
-    timestamp = time.strftime("%H%M%S")
-
-    # Define save path
-    plot_path = Path(experiment_dir) / f"inference_subplots_{traj_idx}_{timestamp}.png"
-
-    # Use the same plotting function as in train.py
-    plot_3d_trajectories_subplots(
-        trajectory_sets,
-        per_agent=False,
-        title=f"Multi-Drone Inference Trajectory {traj_idx}",
-        save_path=str(plot_path),
-    )
+        # Use the same plotting function as in train.py
+        plot_3d_trajectories_subplots(
+            trajectory_sets,
+            per_agent=False,
+            title=f"Multi-Drone Inference Trajectory {traj_idx}",
+            save_path=str(plot_path),
+        )
 
 
 if __name__ == "__main__":

@@ -94,7 +94,11 @@ def evaluate_metrics_multi_agent(
 
 
 def evaluate_metrics_multi_agent_per_timestep(
-    y_true: torch.Tensor, y_pred: torch.Tensor, scaler: MinMaxScaler, num_agents: int
+    y_true: torch.Tensor,
+    y_pred: torch.Tensor,
+    scaler: MinMaxScaler,
+    num_agents: int,
+    num_features_per_agent: int,
 ):
     """
     Compute regression metrics for multi-agent 3D trajectories per timestep.
@@ -114,7 +118,6 @@ def evaluate_metrics_multi_agent_per_timestep(
         axis_rmse_t: array of shape (pred_len, 3) - per-axis RMSE per timestep
         axis_mae_t: array of shape (pred_len, 3) - per-axis MAE per timestep
     """
-    num_features_per_agent = 6
     total_features = num_agents * num_features_per_agent
     assert y_true.shape[2] == total_features, (
         "Mismatch in number of features and agents"

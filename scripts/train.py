@@ -35,7 +35,7 @@ from multi_traj_predict.data.trajectory_loader import load_dataset
 from multi_traj_predict.models.attention_bi_gru_predictor import TrajPredictor
 from multi_traj_predict.utils.logger import get_logger, log_metrics_for_features
 from multi_traj_predict.utils.plot_generator import (
-    plot_multiagent_trajectories,
+    plot_trajectories,
     plot_3d_trajectories_subplots,
 )
 from multi_traj_predict.utils.scaler import scale_per_agent
@@ -346,29 +346,27 @@ def main():
 
     logger.info("Config saved to %s", config_path)
 
-    # Group results back by trajectory_index
-    traj_test = traj_test[: len(y_true)]  # align just in case
-    unique_trajs = np.unique(traj_test)
+    if FEATURES_PER_AGENT == 3:
+        # Group results back by trajectory_index
+        traj_test = traj_test[: len(y_true)]  # align just in case
+        unique_trajs = np.unique(traj_test)
 
-    # Randomly select trajectories to plot
-    plot_trajs = np.random.choice(
-        unique_trajs, size=min(NUM_PLOTS, len(unique_trajs)), replace=False
-    ).tolist()
+        # Randomly select trajectories to plot
+        plot_trajs = np.random.choice(
+            unique_trajs, size=min(NUM_PLOTS, len(unique_trajs)), replace=False
+        ).tolist()
 
-    # Plot trajectories using the helper function
-    plot_multiagent_trajectories(
-        y_true=y_true.numpy(),
-        y_pred=y_pred.numpy(),
-        traj_ids=traj_test,
-        plot_trajs=plot_trajs,
-        scaler=scaler_y,
-        features_per_agent=FEATURES_PER_AGENT,
-        save_dir=exp_dir,
-        velocity_scale=0.5,
-        acceleration_scale=0.3,
-    )
+        # Plot trajectories using the helper function
+        plot_trajectories(
+            y_true=y_true.numpy(),
+            y_pred=y_pred.numpy(),
+            traj_ids=traj_test,
+            plot_trajs=plot_trajs,
+            scaler=scaler_y,
+            agents=AGENTS,
+            save_dir=exp_dir,
+        )
 
-    if not EMBEDDING_EXTRACTION:
         # Stack all past inputs (for context)
         past_inputs = torch.cat(
             [b for b, _ in test_loader], dim=0
@@ -410,9 +408,6 @@ def main():
         plot_3d_trajectories_subplots(
             trajectory_sets,
             per_agent=True,
-            num_features=FEATURES_PER_AGENT,  # Enable velocity + acceleration
-            velocity_scale=0.5,  # Adjust arrow length
-            acceleration_scale=0.3,  # Adjust arrow length
             save_path=str(plot_path),
         )
 

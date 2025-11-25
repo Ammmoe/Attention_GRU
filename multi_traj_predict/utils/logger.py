@@ -133,15 +133,19 @@ def log_metrics_for_features(
     if features_per_agent == 3:
         (mse_t, rmse_t, mae_t, ede_t, axis_mse_t, axis_rmse_t, axis_mae_t) = (
             evaluate_metrics_multi_agent_per_timestep(
-                y_true, y_pred, scaler_y, num_agents
+                y_true, y_pred, scaler_y, num_agents, features_per_agent
             )
         )
 
         header = (
             f"{'Timestep':>8} | {'EDE':>10} | {'MSE':>10} | {'RMSE':>10} | {'MAE':>10} | "
-            + " ".join(
+            + " | ".join(
                 [
-                    f"{m}_x".rjust(10) + f" {m}_y".rjust(10) + f" {m}_z".rjust(10)
+                    f"{m}_x".rjust(10)
+                    + "  "
+                    + f" {m}_y".rjust(10)
+                    + "  "
+                    + f" {m}_z".rjust(10)
                     for m in ["MSE", "RMSE", "MAE"]
                 ]
             )
@@ -155,7 +159,7 @@ def log_metrics_for_features(
         ):
             logger.info(
                 "%8d | %10.6f | %10.6f | %10.6f | %10.6f | "
-                "%10.6f %10.6f %10.6f | %10.6f %10.6f %10.6f | %10.6f %10.6f %10.6f",
+                "%10.6f  %10.6f  %10.6f | %10.6f  %10.6f  %10.6f | %10.6f  %10.6f  %10.6f",
                 t,
                 ede,
                 mse,
@@ -169,7 +173,7 @@ def log_metrics_for_features(
         logger.info("-" * len(header))
         logger.info(
             "%8s | %10.6f | %10.6f | %10.6f | %10.6f | "
-            "%10.6f %10.6f %10.6f | %10.6f %10.6f %10.6f | %10.6f %10.6f %10.6f",
+            "%10.6f  %10.6f  %10.6f | %10.6f  %10.6f  %10.6f | %10.6f  %10.6f  %10.6f",
             "Average",
             ede_t.mean(),
             mse_t.mean(),
