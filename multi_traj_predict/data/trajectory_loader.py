@@ -15,7 +15,7 @@ Each loader prepares the data for model training:
 """
 
 import pandas as pd
-from utils.coordinate_converter import latlon_to_meters
+from multi_traj_predict.utils.coordinate_converter import latlon_to_meters
 
 
 def _concat_flights_into_blocks(flights, num_flights, position_columns):

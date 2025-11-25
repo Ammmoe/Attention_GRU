@@ -1,0 +1,15 @@
+[project]
+name = "multi_traj_predict"
+version = "0.0.1"
+requires-python = ">=3.10"
+
+[project.scripts]
+train-multi-traj = "scripts.train:main"
+infer-multi-traj = "scripts.inference:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]

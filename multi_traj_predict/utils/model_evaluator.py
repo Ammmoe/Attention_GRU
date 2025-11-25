@@ -35,7 +35,7 @@ mse, rmse, mae, ede, axis_mse, axis_rmse, axis_mae = evaluate_metrics_multi_agen
 import torch
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from utils.scaler import scale_per_agent
+from multi_traj_predict.utils.scaler import scale_per_agent
 
 
 def evaluate_metrics_multi_agent(

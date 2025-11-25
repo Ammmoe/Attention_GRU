@@ -8,9 +8,23 @@ __pycache__/
 *.py[cod]
 *.pyd
 *.pyc
+.venv/
+.env
 
 # Optional: Ignore caches in subdirectories too
 **/__pycache__/
 **/*.py[cod]
 **/*.pyd
 **/*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Python packaging
+*.egg-info/
+traj_interact_predict/*.egg-info/

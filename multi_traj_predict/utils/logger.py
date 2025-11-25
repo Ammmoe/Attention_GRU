@@ -19,7 +19,7 @@ get_logger(exp_root="experiments", log_name="train.log")
 import logging
 import os
 from datetime import datetime
-from utils.model_evaluator import (
+from multi_traj_predict.utils.model_evaluator import (
     evaluate_metrics_multi_agent_per_timestep,
     evaluate_metrics_multi_agent_pos_vel_per_timestep,
     evaluate_metrics_multi_agent_pos_vel_acc_per_timestep,

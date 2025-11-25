@@ -10,13 +10,15 @@ This repository contains **training and inference scripts** for **multi-agent 3D
 
 ```bash
 .
-├── train.py              # Training script
-├── inference.py          # Inference script
-├── models/               # Model definitions (GRU, LSTM, RNN variants)
-├── data/                 # Datasets and dataset loaders
-├── utils/                # Utility/helper functions
-├── experiments/          # Saved runs (models, configs, logs, plots, scalers)
-│   ├── 20251001_094916/  # Example experiment folder
+├── requirements.txt              # Project dependencies (choose CPU or CUDA torch here)
+├── README.md                    # Project documentation
+├── .gitignore                   # Git ignore rules
+├── notebooks/                   # Jupyter notebooks for analysis, EDA, reports
+│   └── train.ipynb
+├── data/                        # Ready-to-use datasets (e.g., CSV files)
+│   └── *.csv
+├── experiments/                 # Experiment runs, configs, results, logs
+│   ├── 20251001_094916/
 │   │   ├── last_model.pt
 │   │   ├── best_model.pt
 │   │   ├── scaler_X.pkl
@@ -25,8 +27,20 @@ This repository contains **training and inference scripts** for **multi-agent 3D
 │   │   ├── training.log
 │   │   ├── inference.log
 │   │   └── plots/
-├── requirements.txt      # Dependencies
-└── README.md             # Documentation
+├── scripts/                    # Runnable entry points (thin wrappers)
+│   ├── train.py                # Training script
+│   └── inference.py            # Inference script
+├── project/                    # Main importable package (reusable code)
+│   ├── __init__.py             # Package initialization
+│   ├── models/                 # Model definitions and architectures
+│   │   └── *                   # e.g., GRU, LSTM, RNN model files
+│   ├── utils/                  # Utility functions (io, metrics, visualization)
+│   │   ├── train_utils.py
+│   │   └── logger.py
+│   └── data/                   # Dataset loaders and data transforms
+│       └── data_loader.py
+└── tests/                      # Unit and integration tests
+    └── test_metrics.py
 ```
 
 ---
@@ -156,7 +170,7 @@ NUM_SUBPLOTS = 2  # number of detailed sequence plots per trajectory
 ### Training Example
 
 ```bash
-python train.py
+python -m scripts.train
 ```
 
 Example configuration inside `train.py`:
@@ -197,7 +211,7 @@ model_params = {
 ### Inference Example
 
 ```bash
-python inference.py
+python -m scripts.inference
 ```
 
 Key parameters inside `inference.py`:

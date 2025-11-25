@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import seaborn as sns
-from utils.scaler import scale_per_agent
+from multi_traj_predict.utils.scaler import scale_per_agent
 
 
 def plot_multiagent_trajectories(
