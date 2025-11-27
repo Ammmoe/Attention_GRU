@@ -167,8 +167,8 @@ def load_simulated_dataset(
     Each flight may contain multiple drones (agents). The loader:
     - Groups by flight_id, then by drone_id
     - Ensures each drone trajectory has at least `min_rows` rows
-    - Truncates all drones in a block to the shortest trajectory length
-    - Concatenates multiple drone trajectories side by side (num_flights per block)
+    - Truncates all drones in a flight to the shortest trajectory length
+    - Concatenates multiple drone trajectories side by side (num_flights per flight)
     - Optionally computes acceleration columns if `features_per_agent >= 9`
     """
 
@@ -183,17 +183,17 @@ def load_simulated_dataset(
         drop=True
     )
 
-    # Determine which columns to use
+    # Define feature columns
     position_columns = ["pos_x", "pos_y", "pos_z"]
     velocity_columns = ["vel_x", "vel_y", "vel_z"]
     accel_columns = ["acc_x", "acc_y", "acc_z"]
 
+    # Select columns based on features_per_agent
     if features_per_agent == 3:
         selected_columns = position_columns
     elif features_per_agent == 6:
         selected_columns = position_columns + velocity_columns
     else:  # 9 features → compute acceleration
-        # Compute acceleration per drone
         df[accel_columns] = (
             df.groupby(["flight_id", "drone_id"])
             .apply(
@@ -207,7 +207,7 @@ def load_simulated_dataset(
     grouped_by_flight = df.groupby("flight_id")
     all_flight_dfs = []
 
-    for _, flight_data in grouped_by_flight:
+    for flight_id, flight_data in grouped_by_flight:
         drones = []
         for _, drone_data in flight_data.groupby("drone_id"):
             if len(drone_data) < min_rows:
@@ -217,9 +217,22 @@ def load_simulated_dataset(
         if len(drones) < num_flights:
             continue
 
-        concatenated = _concat_flights_into_blocks(
-            drones, num_flights, selected_columns
-        )
+        # Truncate all drones to shortest length
+        min_len = min(d.shape[0] for d in drones)
+        truncated = [d.iloc[:min_len] for d in drones]
+
+        # Concatenate drones side-by-side
+        concatenated = pd.concat(truncated, axis=1)
+
+        # Rename columns with flight number suffix
+        new_columns = []
+        for i in range(1, len(truncated) + 1):
+            new_columns.extend([f"{col}_flight{i}" for col in selected_columns])
+        concatenated.columns = new_columns
+
+        # Add trajectory_index based on flight_id
+        concatenated["trajectory_index"] = flight_id
+
         all_flight_dfs.append(concatenated)
 
     if not all_flight_dfs:

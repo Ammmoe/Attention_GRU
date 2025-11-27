@@ -85,7 +85,7 @@ def main(exp_dir: str | None = None):
     # Dynamically load model class
     model_module_name = config[
         "model_module"
-    ]  # e.g., "models.modified_attention_bi_gru_predictor"
+    ]  # e.g., "multi_traj_predict.models.modified_attention_bi_gru_predictor"
     # Prefix with root package
     model_class_name = config["model_class"]  # e.g., "TrajPredictor"
     model_params = config["model_params"]  # dict of parameters
@@ -107,10 +107,16 @@ def main(exp_dir: str | None = None):
 
     # Load dataset
     df = load_dataset(DATA_TYPE, min_rows=800, num_flights=AGENTS)
+    
+    # Save the Full DataFrame to CSV inside the experiment directory
+    df.to_csv(experiment_dir / "full_dataframe.csv", index=False)
 
     # Take only the last 20% which is unused during training
     split_idx = int(len(df) * 0.8)
     df = df.iloc[split_idx:].reset_index(drop=True)
+    
+    # Save the Inference DataFrame to CSV inside the experiment directory
+    df.to_csv(experiment_dir / "inference_dataframe.csv", index=False)
 
     # Pick a random trajectory for inference
     traj_idx = np.random.choice(df["trajectory_index"].unique())
