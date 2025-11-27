@@ -203,15 +203,23 @@ model_params = {
 
 ### Inference Workflow
 
-1. Load saved model and scalers from an experiment directory
-2. Perform trajectory prediction for one or more agents
-3. Choose between **sequential prediction** (step-by-step) or **last-point-only prediction**
-4. Visualize results with detailed subplots
+1. Automatically load the latest experiment folder (or manually specify one)
+2. Load saved model weights and scalers
+3. Perform trajectory prediction for one or more agents
+4. Choose between **sequential prediction** (step-by-step) or **last-point-only prediction**
+5. Visualize results with detailed subplots
 
 ### Inference Example
 
 ```bash
 python -m scripts.inference
+```
+
+By default, this loads the most recently modified experiment folder inside `experiments/`.
+You can also specify an experiment directory **manually**:
+
+```bash
+python -m scripts.inference --exp-dir experiments/20251001_094916
 ```
 
 Key parameters inside `inference.py`:
@@ -227,7 +235,6 @@ SEQUENTIAL_PREDICTION = True
 NUM_SUBPLOTS = 1
 
 # Path to trained experiment folder
-experiment_dir = Path("experiments/20251001_094916")
 MODEL_PATH = experiment_dir / "last_model.pt"
 ```
 

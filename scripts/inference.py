@@ -27,6 +27,7 @@ Outputs:
 from pathlib import Path
 from importlib import import_module
 import json
+import argparse
 import time
 import torch
 import joblib
@@ -39,11 +40,12 @@ from multi_traj_predict.utils.scaler import scale_per_agent
 from multi_traj_predict.utils.logger import (
     get_inference_logger,
     log_metrics_for_features,
+    get_latest_experiment_dir,
 )
 from multi_traj_predict.data.trajectory_loader import load_dataset
 
 
-def main():
+def main(exp_dir: str | None = None):
     # pylint: disable=all
     # Set number of drones (agents) for inference
     AGENTS = 6
@@ -55,7 +57,10 @@ def main():
     SEQUENTIAL_PREDICTION = True
 
     # Paths & Config
-    experiment_dir = Path("experiments/20251002_102852")
+    # Auto-detect latest experiment if not provided
+    experiment_dir = Path(exp_dir) if exp_dir else get_latest_experiment_dir()
+    print("Using experiment:", experiment_dir)
+
     CONFIG_PATH = experiment_dir / "config.json"
     MODEL_PATH = experiment_dir / "last_model.pt"
 
@@ -82,7 +87,6 @@ def main():
         "model_module"
     ]  # e.g., "models.modified_attention_bi_gru_predictor"
     # Prefix with root package
-    full_module_name = f"multi_traj_predict.{model_module_name}"  # e.g. "multi_traj_pred.models.modified_attention_bi_gru_predictor"
     model_class_name = config["model_class"]  # e.g., "TrajPredictor"
     model_params = config["model_params"]  # dict of parameters
 
@@ -91,7 +95,7 @@ def main():
 
     # Load model
     # Import module
-    model_module = import_module(full_module_name)
+    model_module = import_module(model_module_name)
 
     # Get class from module
     ModelClass = getattr(model_module, model_class_name)
@@ -183,7 +187,7 @@ def main():
     y_true_scaled = np.array(
         y_true_scaled
     )  # shape: (num_sequences, FORWARD_LEN, features)
-    
+
     # Convert to tensor because log metrics function accepts tensors
     y_true_tensor = torch.tensor(y_true_scaled, dtype=torch.float32)
     y_pred_tensor = torch.tensor(y_pred_scaled, dtype=torch.float32)
@@ -258,4 +262,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--exp-dir",
+        type=str,
+        default=None,
+        help="Path to experiment directory. If omitted, loads latest experiment."
+    )
+    args = parser.parse_args()
+
+    # Pass CLI argument to main
+    main(exp_dir=args.exp_dir)

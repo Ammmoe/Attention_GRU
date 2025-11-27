@@ -18,6 +18,7 @@ get_logger(exp_root="experiments", log_name="train.log")
 
 import logging
 import os
+from pathlib import Path
 from datetime import datetime
 from multi_traj_predict.utils.model_evaluator import (
     evaluate_metrics_multi_agent_per_timestep,
@@ -389,3 +390,36 @@ def log_metrics_for_features(
         logger.warning(
             f"Unsupported FEATURES_PER_AGENT={features_per_agent} for evaluation logging."
         )
+
+
+def get_latest_experiment_dir(base="experiments"):
+    """
+    Return the experiment directory with the latest timestamp based on folder names.
+
+    Assumes folders are named in a sortable timestamp format like 'YYYYMMDD_HHMMSS'.
+
+    Parameters
+    ----------
+    base : str, optional
+        Path to the root directory containing experiment folders. Defaults to "experiments".
+
+    Returns
+    -------
+    pathlib.Path
+        The path to the experiment directory with the latest timestamp.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no directories are found inside the base experiment folder.
+    """
+    base_path = Path(base)
+    exp_dirs = [d for d in base_path.iterdir() if d.is_dir()]
+
+    if not exp_dirs:
+        raise FileNotFoundError(f"No experiment folders found in '{base}'")
+
+    # Sort folders alphabetically by name (timestamp string)
+    latest_dir = sorted(exp_dirs, key=lambda d: d.name)[-1]
+
+    return latest_dir
