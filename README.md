@@ -49,9 +49,8 @@ This repository contains **training and inference scripts** for **multi-agent 3D
 It is recommended to use a conda environment to isolate dependencies.
 
 ```bash
-# Create and activate the environment
-conda create -n traj_pred
-conda activate traj_pred
+# Activate the virtual environment you are using
+conda activate your_env
 
 # Install required dependencies
 pip install -r requirements.txt
